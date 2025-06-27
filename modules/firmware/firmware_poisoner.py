@@ -1,5 +1,5 @@
 # Firmware Poisoner Module
-print("💉 Injecting payload into firmware image...")
+print(" Injecting payload into firmware image...")
 # Placeholder simulation
 print("-> Appending reverse shell to init script...")
 print("-> Repacking firmware image...")
