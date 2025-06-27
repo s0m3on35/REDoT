@@ -1,5 +1,5 @@
 # HVAC Fuzzer (Modbus/BACnet)
-print("🧯 HVAC Fuzzer: Scanning for Modbus/BACnet endpoints...")
+print(" HVAC Fuzzer: Scanning for Modbus/BACnet endpoints...")
 
 # Simulated fuzzing logic
 endpoints = ['192.168.1.10:502', '192.168.1.15:47808']
