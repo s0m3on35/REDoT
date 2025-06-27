@@ -3,7 +3,7 @@ import openai
 
 openai.api_key = "YOUR_OPENAI_KEY"
 
-print("🤖 RedOT Live Copilot (type 'exit' to quit)")
+print(" RedOT Live Copilot (type 'exit' to quit)")
 while True:
     query = input("You> ")
     if query.strip().lower() == "exit":
