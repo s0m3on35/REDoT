@@ -1,0 +1,13 @@
+flask
+nmap
+scapy
+pyserial
+openai
+vosk
+plotly
+opencv-python
+pyyaml
+opencv-python
+pyttsx3
+pyserial
+flask
