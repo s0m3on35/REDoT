@@ -1,5 +1,5 @@
 # access_replay.py - Replay RFID/UHF/PINs
-print("🔐 Access Replay Module")
+print(" Access Replay Module")
 
 # Simulated RFID cloning and PIN brute force
 rfid_uid = "04:A3:BC:12:9F:88"
