@@ -14,19 +14,19 @@ with open(report_path, "w") as f:
     f.write(f"# RedOT Attack Report\n")
     f.write(f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
 
-    f.write("## 🎯 Target Assets\n")
+    f.write("## Target Assets\n")
     for asset in assets:
         f.write(f"- {asset}\n")
 
-    f.write("\n## 🔍 CVEs Matched\n")
+    f.write("\n##  CVEs Matched\n")
     for cve in cves:
         f.write(f"- {cve}\n")
 
-    f.write("\n## 💣 Modules Deployed\n")
+    f.write("\n##  Modules Deployed\n")
     for mod in modules_used:
         f.write(f"- {mod}.py\n")
 
-    f.write("\n## ✅ Suggested Next Steps\n")
+    f.write("\n##  Suggested Next Steps\n")
     f.write("- Run 'dashboard_override.py' to trigger rogue automations\n")
     f.write("- Deploy 'loop_bomb.py' on identified MQTT bot\n")
     f.write("- Capture DNS exfil using 'dns_c2.py' beacon listener\n")
