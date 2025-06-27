@@ -2,7 +2,7 @@
 import os
 import random
 
-print("🤖 RedOT Copilot Engine Online")
+print(" RedOT Copilot Engine Online")
 # Simulate log parsing and GPT-style recommendations
 modules_detected = ['wifi_scan', 'uart_extractor', 'cve_autopwn']
 
