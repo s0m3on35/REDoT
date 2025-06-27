@@ -17,7 +17,7 @@ while True:
     noise = np.random.normal(0, 50, frame.shape).astype(np.uint8)
     adversarial_frame = cv2.add(frame, noise)
 
-    cv2.putText(adversarial_frame, "⚠️ Adversarial Pattern Active", (10, 30),
+    cv2.putText(adversarial_frame, "Adversarial Pattern Active", (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
     cv2.imshow("RedOT AI Vision Attack", adversarial_frame)
 
