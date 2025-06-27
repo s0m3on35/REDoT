@@ -1,7 +1,7 @@
 # Home Automation Dashboard Override
 print(" Dashboard Override Module")
 
-dashboards = ['http://192.168.1.50:8123', 'http://192.168.1.51:8080']
+dashboards = ['http://192.x.1.x:8123', 'http://192.x.1.x:8080']
 for url in dashboards:
     print(f"[+] Probing {url}...")
     print("    -> Attempting default login (admin:admin)... [FAIL]")
