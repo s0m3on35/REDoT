@@ -75,9 +75,9 @@ pip install -r requirements.txt
 ---
 
 ## 🚀 Status
-All modules operational. GPT logic and real-time C2 dashboard in development.
+All modules operational. real-time C2 dashboard in development.
 
 ---
 
 ## ⚠️ Legal
-RedOT is for **authorized red team operations only**. Use responsibly.
+RedOT is for **authorized red team operations only**. Use responsibly. MADE by S0m3R34P3r
