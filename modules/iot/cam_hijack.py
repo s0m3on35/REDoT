@@ -1,5 +1,5 @@
 # cam_hijack.py - Attack RTSP & ONVIF streams
-print("📷 Camera Hijack Module")
+print(" Camera Hijack Module")
 
 # Simulated RTSP brute-force and ONVIF control
 targets = ['192.168.1.100', '192.168.1.101']
