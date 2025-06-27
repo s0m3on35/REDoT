@@ -1,7 +1,7 @@
 # UART Extractor
 import serial.tools.list_ports
 
-print("🔌 UART Extractor: Scanning available serial ports...")
+print(" UART Extractor: Scanning available serial ports...")
 ports = serial.tools.list_ports.comports()
 baud_rates = [9600, 19200, 38400, 57600, 115200]
 
