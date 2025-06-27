@@ -12,10 +12,10 @@ steps = [
 ]
 
 with open("reports/killchain.txt", "w") as f:
-    f.write(f"📆 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+    f.write(f" Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
     for s in steps:
         f.write(f"{s}\n")
         f.write("- Tool: TBD\n")
         f.write("- Notes: TBD\n\n")
 
-print("✅ Kill Chain initialized: reports/killchain.txt")
+print(" Kill Chain initialized: reports/killchain.txt")
