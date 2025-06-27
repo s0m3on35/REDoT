@@ -9,14 +9,14 @@ CENSYS_SECRET = "YOUR_CENSYS_SECRET"
 
 target_ip = input("Target IP: ")
 
-print("🔍 Searching Shodan...")
+print(" Searching Shodan...")
 shodan_url = f"https://api.shodan.io/shodan/host/{target_ip}?key={SHODAN_API_KEY}"
 try:
     shodan_data = requests.get(shodan_url).json()
     print("Shodan OS:", shodan_data.get("os", "N/A"))
     print("Ports:", shodan_data.get("ports", []))
 except Exception as e:
-    print("❌ Shodan error:", e)
+    print(" Shodan error:", e)
 
 print("\n🔍 Searching Censys...")
 censys_url = "https://search.censys.io/api/v2/hosts/" + target_ip
@@ -27,4 +27,4 @@ try:
     else:
         print("Censys error:", resp.status_code)
 except Exception as e:
-    print("❌ Censys error:", e)
+    print(" Censys error:", e)
