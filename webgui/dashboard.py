@@ -21,7 +21,7 @@ def home():
 
 @app.route("/copilot")
 def copilot():
-    return "<pre>🤖 Copilot Suggestion:\n- Use 'dns_c2.py' for covert C2.\n- Run 'loop_bomb.py' on gardenbot-01.local</pre>"
+    return "<pre> Copilot Suggestion:\n- Use 'dns_c2.py' for covert C2.\n- Run 'loop_bomb.py' on gardenbot-01.local</pre>"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
