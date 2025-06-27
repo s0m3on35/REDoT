@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "🧠 REDOT - Unified Red Team Toolkit for Robots and OT stuff"
+echo " REDOT - Unified Red Team Toolkit for Robots and OT stuff"
 PS3='Select an operation: '
 options=("Recon" "Wireless Attacks" "Hardware Interface" "AI Attacks" "Firmware Analysis" "Deploy Payload" "Launch Copilot" "Camera Spoofing" "Exit")
 select opt in "${options[@]}"
@@ -59,7 +59,7 @@ done
 
 # IoT/OT Attack Modules
 
-echo "📡 OT/IoT Attacks:"
+echo " OT/IoT Attacks:"
 PS3='Select OT/IoT operation: '
 iot_options=("Camera Hijack [IP Cam, ONVIF]" "Access Control Replay [RFID, Flipper, Proxmark]" "Back" "HVAC Fuzzer [BACnet/Modbus]" "Dashboard Override [Home Assistant]" )
 select iot_opt in "${iot_options[@]}"
@@ -86,18 +86,18 @@ done
 
 # Report Generator
 
-echo "📝 Reporting:"
+echo " Reporting:"
 python3 modules/report_builder.py  # [Laptop]
 
 # AI & Camera Expansion
 
-echo "🤖 Copilot Tools:"
+echo " Copilot Tools:"
 python3 modules/copilot_chat.py  # [Laptop, GPT]
 
-echo "📹 Camera Tools:"
+echo " Camera Tools:"
 python3 modules/rtsp_viewer.py  # [Laptop, RTSP cam]
 
-echo "🕵️ Persistence & Callback:"
+echo " Persistence & Callback:"
 python3 modules/stealth_agent.py  # [Target, Cron/Webhook]
 
 # AI & Threat Mapping
