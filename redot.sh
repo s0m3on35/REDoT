@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "🧠 REDOT - Unified Red Team Toolkit for Gardener Robots"
+echo "🧠 REDOT - Unified Red Team Toolkit for Robots and OT stuff"
 PS3='Select an operation: '
 options=("Recon" "Wireless Attacks" "Hardware Interface" "AI Attacks" "Firmware Analysis" "Deploy Payload" "Launch Copilot" "Camera Spoofing" "Exit")
 select opt in "${options[@]}"
