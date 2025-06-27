@@ -1,5 +1,5 @@
 # Target config
 robots:
   - name: Bot01
-    ip: 192.168.0.0
+    ip: 192.168.0.0  #replace with target IP
     protocols: [wifi, ble]
