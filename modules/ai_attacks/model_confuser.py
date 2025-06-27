@@ -2,7 +2,7 @@
 import cv2
 import numpy as np
 
-print("🧠 Model Confuser: Starting adversarial spoof...")
+print("Model Confuser: Starting adversarial spoof...")
 cap = cv2.VideoCapture(0)
 if not cap.isOpened():
     print("Camera access failed.")
