@@ -1,5 +1,5 @@
 # JTAG Auto Interface
-print("🧪 JTAG Interface Discovery...")
+print("JTAG Interface Discovery...")
 # Placeholder logic for JTAG brute pinout detection
 print("Simulating JTAG scan sequence with Bus Pirate...")
 print("Connecting to TAP... IDCODE = 0x12345678")
