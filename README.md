@@ -1,4 +1,4 @@
-# RedOT – Red Team Toolkit for Robots and OT stuff 🤖🌱
+# RedOT – Red Team Toolkit for Robots and OT stuff
 
 ## Overview
 RedOT is a modular offensive framework for red teaming autonomous gardener robots. It includes capabilities across:
