@@ -79,5 +79,5 @@ All modules operational. real-time C2 dashboard in development.
 
 ---
 
-## ⚠️ Legal
+##  Legal
 RedOT is for **authorized red team operations only**. Use responsibly. MADE by S0m3R34P3r
