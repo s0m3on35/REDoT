@@ -1,6 +1,6 @@
 # CVE Autopwn Module
 import os
-print("🧬 CVE AutoPwn Scanner Running...")
+print(" CVE AutoPwn Scanner Running...")
 # Simulated parsing and matching
 firmware_strings = ['busybox v1.20.2', 'lighttpd/1.4.31']
 known_vulns = {
