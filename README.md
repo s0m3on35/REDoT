@@ -10,7 +10,7 @@ RedOT is a modular offensive framework for red teaming autonomous gardener robot
 
 ---
 
-## 🧰 Modules
+##  Modules
 
 ### Recon
 - `wifi_scan.py`: Scan local Wi-Fi for devices
@@ -48,7 +48,7 @@ RedOT is a modular offensive framework for red teaming autonomous gardener robot
 
 ---
 
-## 🖥️ Usage
+##  Usage
 
 Run the main CLI launcher:
 ```bash
@@ -59,7 +59,7 @@ Follow the menu to explore modules. All output logs saved under `logs/`.
 
 ---
 
-## 📦 Requirements
+## Requirements
 Install with:
 ```bash
 pip install -r requirements.txt
@@ -67,14 +67,14 @@ pip install -r requirements.txt
 
 ---
 
-## 📁 Output & Logs
+## Output & Logs
 - Logs: `logs/`
 - Reports: `reports/` (future)
 - Config: `config/targets.yaml`
 
 ---
 
-## 🚀 Status
+##  Status
 All modules operational. real-time C2 dashboard in development.
 
 ---
