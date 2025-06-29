@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RF Signal Cloner - Real Red Team Ready Version
+RF Signal Cloner 
 Captures and replays RF signals (433/868/915 MHz), exports to multiple formats, and performs fingerprinting.
 """
 
