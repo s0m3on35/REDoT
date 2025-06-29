@@ -1,91 +1,114 @@
 #!/usr/bin/env python3
-import os
 import subprocess
 import time
-import json
-import shutil
+import os
+import re
+import sys
 
-OPENOCD_CONFIG_DIR = "/usr/share/openocd/scripts"
-INTERFACES_DIR = os.path.join(OPENOCD_CONFIG_DIR, "interface")
-TARGETS_DIR = os.path.join(OPENOCD_CONFIG_DIR, "target")
-DUMP_OUTPUT = "logs/jtag_flash_dump.bin"
-ANALYSIS_OUTPUT = "logs/jtag_analysis.txt"
-UPLOAD_PATH = "webgui/static/jtag_uploaded.bin"
+# Paths to OpenOCD config directories
+INTERFACE_DIR = "/usr/share/openocd/scripts/interface"
+TARGET_DIR = "/usr/share/openocd/scripts/target"
+OUTPUT_DIR = "logs/jtag"
 
-def list_configs(directory):
-    return [f for f in os.listdir(directory) if f.endswith(".cfg")]
+# Known mappings for prioritized detection
+INTERFACE_MAP = {
+    "Olimex": "ftdi/olimex-arm-usb-tiny-h.cfg",
+    "STMicroelectronics": "stlink.cfg",
+    "FTDI": "ftdi/ft2232h_breakout.cfg",
+    "SEGGER": "jlink.cfg",
+    "Silicon Labs": "cmsis-dap.cfg"
+}
 
-def auto_detect_openocd(interface, target):
-    print(f"[*] Trying interface {interface} with target {target}...")
+TARGET_GUESS_LIST = [
+    "stm32f1x.cfg",
+    "stm32f4x.cfg",
+    "nrf52.cfg",
+    "esp32.cfg",
+    "lpc176x.cfg",
+    "at91sam7x.cfg"
+]
+
+def run_openocd(interface_cfg, target_cfg):
+    print(f"[*] Testing Interface: {interface_cfg} | Target: {target_cfg}")
     cmd = [
         "openocd",
-        "-f", os.path.join(INTERFACES_DIR, interface),
-        "-f", os.path.join(TARGETS_DIR, target),
-        "-c", "init; scan_chain; shutdown"
+        "-f", os.path.join(INTERFACE_DIR, interface_cfg),
+        "-f", os.path.join(TARGET_DIR, target_cfg),
+        "-c", "init; scan_chain; exit"
     ]
     try:
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=15).decode()
-        if "IRLength" in output and "TAP" in output:
-            print(f"[+] Success: Detected TAP with interface {interface} and target {target}")
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=10).decode()
+        if "TAP" in output or "IRLength" in output:
+            print("[+] Successful JTAG interface detected")
             return True
-    except subprocess.CalledProcessError as e:
-        return False
-    except subprocess.TimeoutExpired:
+    except Exception:
         return False
     return False
 
 def find_working_combo():
-    interfaces = list_configs(INTERFACES_DIR)
-    targets = list_configs(TARGETS_DIR)
-    for iface in interfaces:
-        for tgt in targets:
-            if auto_detect_openocd(iface, tgt):
-                return iface, tgt
+    for vendor, iface_cfg in INTERFACE_MAP.items():
+        for tgt_cfg in TARGET_GUESS_LIST:
+            if run_openocd(iface_cfg, tgt_cfg):
+                return iface_cfg, tgt_cfg
     return None, None
 
-def dump_flash(interface, target):
-    print("[*] Dumping flash via OpenOCD...")
+def dump_flash(interface_cfg, target_cfg):
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    out_file = os.path.join(OUTPUT_DIR, "jtag_flash_dump.bin")
     cmd = [
         "openocd",
-        "-f", os.path.join(INTERFACES_DIR, interface),
-        "-f", os.path.join(TARGETS_DIR, target),
-        "-c", "init; halt; dump_image {} 0x08000000 0x100000; shutdown".format(DUMP_OUTPUT)
+        "-f", os.path.join(INTERFACE_DIR, interface_cfg),
+        "-f", os.path.join(TARGET_DIR, target_cfg),
+        "-c", f"init; halt; dump_image {out_file} 0x08000000 0x10000; exit"
     ]
-    subprocess.run(cmd)
+    print(f"[+] Dumping flash memory to {out_file}")
+    subprocess.call(cmd)
 
-def analyze_binary():
-    print("[*] Analyzing binary with binwalk and strings...")
-    with open(ANALYSIS_OUTPUT, "w") as out:
-        out.write("== Binwalk Output ==\n")
-        try:
-            binwalk_out = subprocess.check_output(["binwalk", DUMP_OUTPUT]).decode()
-            out.write(binwalk_out)
-        except Exception as e:
-            out.write(f"Binwalk failed: {e}\n")
+def install_as_service():
+    print("[+] Creating systemd service for REDOT JTAG module...")
+    service_path = "/etc/systemd/system/jtag_dump.service"
+    script_path = os.path.abspath(__file__)
+    service_content = f"""[Unit]
+Description=REDOT JTAG Auto Interface Flash Dumper
+After=network.target
 
-        out.write("\n== Strings Output ==\n")
-        try:
-            strings_out = subprocess.check_output(["strings", DUMP_OUTPUT]).decode()
-            out.write(strings_out)
-        except Exception as e:
-            out.write(f"strings failed: {e}\n")
+[Service]
+Type=simple
+User=root
+WorkingDirectory={os.path.dirname(script_path)}
+ExecStart=/usr/bin/python3 {script_path}
+StandardOutput=append:/opt/REDoT/logs/jtag/jtag_dump.log
+Restart=on-failure
 
-def upload_to_dashboard():
-    os.makedirs(os.path.dirname(UPLOAD_PATH), exist_ok=True)
-    shutil.copy(DUMP_OUTPUT, UPLOAD_PATH)
-    print(f"[+] Uploaded dump to {UPLOAD_PATH} for REDoT dashboard access.")
+[Install]
+WantedBy=multi-user.target
+"""
+    with open(service_path, "w") as f:
+        f.write(service_content)
+    os.system("systemctl daemon-reexec")
+    os.system("systemctl enable jtag_dump.service")
+    os.system("systemctl start jtag_dump.service")
+    print(f"[✓] Service created and started: {service_path}")
 
 def main():
     print("=== REDOT JTAG Auto Interface ===")
-    iface, tgt = find_working_combo()
-    if not iface or not tgt:
-        print("[-] No valid JTAG interface/target combo detected.")
+    print("Choose an option:")
+    print("1. Run now")
+    print("2. Install as persistent systemd service")
+    choice = input("Enter 1 or 2: ").strip()
+
+    if choice == "2":
+        install_as_service()
         return
-    print(f"[+] Using Interface: {iface}, Target: {tgt}")
-    dump_flash(iface, tgt)
-    analyze_binary()
-    upload_to_dashboard()
-    print("[✓] JTAG operation complete.")
+
+    iface, target = find_working_combo()
+    if not iface or not target:
+        print("[-] No valid JTAG interface/target combination found.")
+        return
+    print(f"[+] Using interface: {iface}")
+    print(f"[+] Using target: {target}")
+    dump_flash(iface, target)
+    print("[✓] Flash dump complete. Output saved in logs/jtag/")
 
 if __name__ == "__main__":
     main()
