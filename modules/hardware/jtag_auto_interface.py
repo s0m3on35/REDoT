@@ -1,57 +1,91 @@
 #!/usr/bin/env python3
 import os
 import subprocess
-from datetime import datetime
+import time
+import json
+import shutil
 
-print("🔧 Starting JTAG Auto Interface Discovery...")
+OPENOCD_CONFIG_DIR = "/usr/share/openocd/scripts"
+INTERFACES_DIR = os.path.join(OPENOCD_CONFIG_DIR, "interface")
+TARGETS_DIR = os.path.join(OPENOCD_CONFIG_DIR, "target")
+DUMP_OUTPUT = "logs/jtag_flash_dump.bin"
+ANALYSIS_OUTPUT = "logs/jtag_analysis.txt"
+UPLOAD_PATH = "webgui/static/jtag_uploaded.bin"
 
-# Ensure output folder
-os.makedirs("logs", exist_ok=True)
-dump_path = f"logs/jtag_flash_dump_{datetime.now().strftime('%Y%m%d_%H%M%S')}.bin"
+def list_configs(directory):
+    return [f for f in os.listdir(directory) if f.endswith(".cfg")]
 
-# Check for OpenOCD availability
-def check_openocd():
+def auto_detect_openocd(interface, target):
+    print(f"[*] Trying interface {interface} with target {target}...")
+    cmd = [
+        "openocd",
+        "-f", os.path.join(INTERFACES_DIR, interface),
+        "-f", os.path.join(TARGETS_DIR, target),
+        "-c", "init; scan_chain; shutdown"
+    ]
     try:
-        subprocess.run(["openocd", "--version"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return True
-    except Exception:
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=15).decode()
+        if "IRLength" in output and "TAP" in output:
+            print(f"[+] Success: Detected TAP with interface {interface} and target {target}")
+            return True
+    except subprocess.CalledProcessError as e:
         return False
+    except subprocess.TimeoutExpired:
+        return False
+    return False
 
-if not check_openocd():
-    print("[!] OpenOCD not found. Please install it to proceed.")
-    exit(1)
+def find_working_combo():
+    interfaces = list_configs(INTERFACES_DIR)
+    targets = list_configs(TARGETS_DIR)
+    for iface in interfaces:
+        for tgt in targets:
+            if auto_detect_openocd(iface, tgt):
+                return iface, tgt
+    return None, None
 
-# Create minimal OpenOCD config file
-config_path = "logs/openocd_auto.cfg"
-with open(config_path, "w") as cfg:
-    cfg.write("""
-interface ft2232
-ft2232_vid_pid 0x0403 0x6010
-ft2232_layout jtagkey
-transport select jtag
-reset_config trst_and_srst
-adapter_khz 1000
+def dump_flash(interface, target):
+    print("[*] Dumping flash via OpenOCD...")
+    cmd = [
+        "openocd",
+        "-f", os.path.join(INTERFACES_DIR, interface),
+        "-f", os.path.join(TARGETS_DIR, target),
+        "-c", "init; halt; dump_image {} 0x08000000 0x100000; shutdown".format(DUMP_OUTPUT)
+    ]
+    subprocess.run(cmd)
 
-# Replace with actual target chip config
-source [find target/stm32f1x.cfg]
-""")
+def analyze_binary():
+    print("[*] Analyzing binary with binwalk and strings...")
+    with open(ANALYSIS_OUTPUT, "w") as out:
+        out.write("== Binwalk Output ==\n")
+        try:
+            binwalk_out = subprocess.check_output(["binwalk", DUMP_OUTPUT]).decode()
+            out.write(binwalk_out)
+        except Exception as e:
+            out.write(f"Binwalk failed: {e}\n")
 
-print(f"[+] OpenOCD config generated at: {config_path}")
-print("[*] Attempting to connect and dump flash...")
+        out.write("\n== Strings Output ==\n")
+        try:
+            strings_out = subprocess.check_output(["strings", DUMP_OUTPUT]).decode()
+            out.write(strings_out)
+        except Exception as e:
+            out.write(f"strings failed: {e}\n")
 
-# Start OpenOCD with commands to dump flash
-try:
-    result = subprocess.run([
-        "openocd", "-f", config_path,
-        "-c", f"init; reset halt; dump_image {dump_path} 0x08000000 0x10000; shutdown"
-    ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+def upload_to_dashboard():
+    os.makedirs(os.path.dirname(UPLOAD_PATH), exist_ok=True)
+    shutil.copy(DUMP_OUTPUT, UPLOAD_PATH)
+    print(f"[+] Uploaded dump to {UPLOAD_PATH} for REDoT dashboard access.")
 
-    if result.returncode == 0:
-        print(f"[+] Flash memory dumped to {dump_path}")
-    else:
-        print("[!] Dump failed. Output below:")
-        print(result.stdout)
-except Exception as e:
-    print(f"[!] Error running OpenOCD: {e}")
+def main():
+    print("=== REDOT JTAG Auto Interface ===")
+    iface, tgt = find_working_combo()
+    if not iface or not tgt:
+        print("[-] No valid JTAG interface/target combo detected.")
+        return
+    print(f"[+] Using Interface: {iface}, Target: {tgt}")
+    dump_flash(iface, tgt)
+    analyze_binary()
+    upload_to_dashboard()
+    print("[✓] JTAG operation complete.")
 
-print("[✓] JTAG Auto Interface Module Completed.")
+if __name__ == "__main__":
+    main()
