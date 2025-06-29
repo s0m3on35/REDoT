@@ -102,7 +102,7 @@ python3 modules/stealth_agent.py  # [Target, Cron/Webhook]
 
 # AI & Threat Mapping
 
-echo "🧠 AI Ops:"
+echo " AI Ops:"
 python3 modules/gpt_live_copilot.py  # [Laptop, GPT API]
 python3 modules/intel_enricher.py  # [Laptop, Internet]
 python3 modules/killchain_builder.py  # [Laptop, Report]
