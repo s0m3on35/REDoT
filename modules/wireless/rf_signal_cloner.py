@@ -19,6 +19,9 @@ EXPORT_DIR = "rf_captures"
 MQTT_BROKER = "127.0.0.1"
 MQTT_TOPIC = "redot/rf_signal"
 COMMON_FREQS = [433920000, 868000000, 915000000]  # Hz
+ENTROPY_ANALYZER = "modules/analysis/entropy_analyzer.py"
+CLONER_SELF = "modules/wireless/rf_signal_cloner.py"
+IMPLANT_DROPPER = "modules/payloads/implant_dropper.py"
 
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
@@ -82,7 +85,21 @@ def capture_rf(freq, duration, interface="hackrf"):
         print(f"[!] MQTT error: {e}")
 
     print(f"[+] Saved: {output_bin}, {output_wav}, {output_sub}, {output_pcap}")
-    visualize_entropy(output_bin)
+
+    auto_chain(output_bin, freq)
+
+# === CHAINING ===
+def auto_chain(bin_path, freq):
+    print(f"[+] Running entropy analysis on {bin_path}...")
+    subprocess.run(["python3", ENTROPY_ANALYZER, "--input", bin_path])
+
+    print(f"[+] Replaying captured RF signal...")
+    subprocess.run(["python3", CLONER_SELF, "--replay", bin_path, "--freq", str(freq)])
+
+    print(f"[+] Checking for known fingerprints...")
+    if "capture" in bin_path:  # Simulated match
+        print("[+] Fingerprint match: Deploying implant_dropper...")
+        subprocess.run(["python3", IMPLANT_DROPPER])
 
 # === REPLAY FUNCTIONALITY ===
 def replay_rf(file_path, freq):
