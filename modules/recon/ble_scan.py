@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # REDOT: ble_scan.py
-# BLE offensive toolkit with self-bootstrap real exploits, automated update & full REDoT integration
+
 
 import asyncio
 import argparse
