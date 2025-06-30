@@ -1,10 +1,10 @@
-# modules/firmware/cve_autopwn.py
+#!/usr/bin/env python3
 import os
 import json
 import requests
+import subprocess
 from datetime import datetime
 
-# Define test firmware strings (replace with real input later)
 firmware_strings = ['busybox v1.20.2', 'lighttpd/1.4.31']
 known_vulns = {
     'busybox v1.20.2': {
@@ -32,14 +32,45 @@ POC_DIR = os.path.join(RESULTS_DIR, "pocs")
 MSF_XML_DIR = os.path.join(RESULTS_DIR, "msf_search")
 KILLCHAIN_FILE = "reports/killchain.txt"
 CVE_AUTOPWN_JSON = os.path.join(RESULTS_DIR, "cve_autopwn.json")
+POST_MODULES = ["modules/payloads/dns_c2.py", "modules/payloads/implant_dropper.py"]
 
-# Ensure folders exist
+def check_write(path):
+    try:
+        os.makedirs(path, exist_ok=True)
+        testfile = os.path.join(path, ".__testwrite__")
+        with open(testfile, "w") as f:
+            f.write("test")
+        os.remove(testfile)
+        return True
+    except:
+        return False
+
+def launch_post_modules():
+    for module in POST_MODULES:
+        if os.path.exists(module):
+            try:
+                subprocess.Popen(["python3", module], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print(f"[+] Post-ex module launched: {module}")
+            except:
+                pass
+
+def launch_metasploit(cve_id):
+    msf_cmd = f"search {cve_id}"
+    try:
+        print(f"[>] Launching Metasploit for CVE: {cve_id}")
+        subprocess.call(["msfconsole", "-q", "-x", f"{msf_cmd}; exit"])
+    except:
+        print(f"[!] Metasploit launch failed for {cve_id}")
+
+if not check_write(RESULTS_DIR) or not check_write("reports"):
+    print("[!] Check write permissions on results/ and reports/")
+    exit(1)
+
 os.makedirs(POC_DIR, exist_ok=True)
 os.makedirs(MSF_XML_DIR, exist_ok=True)
 os.makedirs("reports", exist_ok=True)
 
 matched = []
-
 print(" CVE AutoPwn Scanner Running...")
 
 for comp in firmware_strings:
@@ -49,7 +80,6 @@ for comp in firmware_strings:
         print(f"[!] Found vulnerable component: {comp} => {cve_id}")
         print(f"    Suggested PoC: {vuln['exploit_links']['exploitdb']}")
 
-        # Download PoC HTMLs
         for label, url in vuln['exploit_links'].items():
             try:
                 resp = requests.get(url, timeout=10)
@@ -57,19 +87,17 @@ for comp in firmware_strings:
                 with open(poc_path, "w") as f:
                     f.write(resp.text)
                 print(f"    [+] Saved PoC: {poc_path}")
-            except Exception as e:
-                print(f"    [!] Failed to download {label} PoC: {e}")
+            except:
+                print(f"    [!] Failed to download {label} PoC")
 
-        # Write Metasploit search XML placeholder
         try:
             xml_path = os.path.join(MSF_XML_DIR, f"{cve_id}_search.xml")
             with open(xml_path, "w") as f:
                 f.write(f"<metasploit><search><cve>{cve_id}</cve><result>placeholder</result></search></metasploit>")
             print(f"    [+] Metasploit XML created: {xml_path}")
-        except Exception as e:
-            print(f"    [!] Failed to write XML: {e}")
+        except:
+            print(f"    [!] Failed to write XML")
 
-        # Append to killchain.txt
         try:
             with open(KILLCHAIN_FILE, "a") as f:
                 f.write(f"\n[+] CVE AutoPwn Enrichment - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -80,10 +108,9 @@ for comp in firmware_strings:
                 for label, url in vuln['exploit_links'].items():
                     f.write(f"   - {label.upper()} PoC: {url}\n")
                 f.write(f"   - Metasploit XML: {xml_path}\n")
-        except Exception as e:
-            print(f"    [!] Killchain update failed: {e}")
+        except:
+            print(f"    [!] Killchain update failed")
 
-        # Track match
         matched.append({
             "component": comp,
             "cve": cve_id,
@@ -92,10 +119,16 @@ for comp in firmware_strings:
             "exploit_links": vuln['exploit_links']
         })
 
-# Save match JSON
+        choice = input(f"    [>] Launch Metasploit for {cve_id}? (y/n): ").strip().lower()
+        if choice == 'y':
+            launch_metasploit(cve_id)
+
 try:
     with open(CVE_AUTOPWN_JSON, "w") as f:
         json.dump(matched, f, indent=2)
     print(f"\n[+] Match data saved to {CVE_AUTOPWN_JSON}")
-except Exception as e:
-    print(f"[!] Failed to write CVE match JSON: {e}")
+except:
+    print(f"[!] Failed to write CVE match JSON")
+
+print("\n[>] Launching post-ex modules...")
+launch_post_modules()
