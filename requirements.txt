@@ -1,30 +1,22 @@
-# Core networking and packet manipulation
 scapy
 nmap
 requests
 pyyaml
-
-# Serial and BLE tools
 pyserial
 blesuite
 aioblescan
-
-# AI and voice interaction
 openai
 vosk
 pyttsx3
-
-# Dashboards, plotting, and real-time UI
+torch
+transformers
+torchaudio
 flask
 flask-socketio
 websocket-server
+websockets
 rich
 termcolor
-
-# Visuals, RTSP, and computer vision
 opencv-python
 pillow
 numpy
-
-# Websocket client/server support
-websockets
