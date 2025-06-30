@@ -3,85 +3,83 @@
 import os
 import time
 import json
-import base64
-from datetime import datetime
-import websocket
+import subprocess
+import datetime
+from scapy.all import sniff, wrpcap, Raw
 
 AGENT_ID = "ota_injector"
 ALERT_FILE = "webgui/alerts.json"
-KILLCHAIN_FILE = "reports/killchain.json"
-LOG_FILE = "reports/ota_firmware.log"
-PAYLOAD_FILE = "reports/ota_firmware.bin"
-CHAIN_SCRIPT_1 = "modules/firmware/firmware_poisoner.py"
-CHAIN_SCRIPT_2 = "modules/report_builder.py"
-WS_DASHBOARD_URI = "ws://localhost:8765"
+KILLCHAIN_FILE = "webgui/killchain.json"
+PCAP_DIR = "reports"
+EXTRACTED_FW_DIR = "reports/firmware_dumps"
+WEBSOCKET_TRIGGER = "webgui/push_event.py"
 
-os.makedirs("reports", exist_ok=True)
-os.makedirs("webgui", exist_ok=True)
+os.makedirs(PCAP_DIR, exist_ok=True)
+os.makedirs(EXTRACTED_FW_DIR, exist_ok=True)
+
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+pcap_file = os.path.join(PCAP_DIR, f"ota_sniff_{timestamp}.pcap")
+firmware_file = os.path.join(PCAP_DIR, f"firmware_snippet_{timestamp}.bin")
 
 def log(msg):
-    ts = datetime.utcnow().isoformat()
-    full = f"[{ts}] [OTA] {msg}"
-    print(full)
-    with open(LOG_FILE, "a") as f:
-        f.write(full + "\n")
+    print(f"[OTA] {msg}")
 
-def push_alert_websocket(message):
-    try:
-        ws = websocket.create_connection(WS_DASHBOARD_URI, timeout=3)
-        ws.send(json.dumps({
-            "agent": AGENT_ID,
-            "alert": message,
-            "type": "firmware",
-            "timestamp": time.time()
-        }))
-        ws.close()
-    except Exception as e:
-        log(f"WebSocket alert failed: {e}")
-
-def push_alert_file():
+def push_alert():
+    alert = {
+        "agent": AGENT_ID,
+        "alert": "OTA firmware interceptor triggered",
+        "type": "firmware",
+        "timestamp": time.time()
+    }
     with open(ALERT_FILE, "a") as f:
-        f.write(json.dumps({
-            "agent": AGENT_ID,
-            "alert": "OTA firmware interceptor triggered",
-            "type": "firmware",
-            "timestamp": time.time()
-        }) + "\n")
+        f.write(json.dumps(alert) + "\n")
+    try:
+        subprocess.Popen(["python3", WEBSOCKET_TRIGGER, json.dumps(alert)])
+    except:
+        log("WebSocket trigger failed")
 
-def update_killchain(event):
+def append_killchain(step):
     entry = {
         "agent": AGENT_ID,
-        "event": event,
-        "time": time.time()
+        "step": step,
+        "timestamp": time.time()
     }
+    with open(KILLCHAIN_FILE, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+
+def extract_payload(payload_bytes):
+    with open(firmware_file, "wb") as f:
+        f.write(payload_bytes)
+    log(f"Extracted firmware snippet saved: {firmware_file}")
+    append_killchain("Firmware dump extracted")
+
+    # Try binwalk extraction
+    extract_dir = os.path.join(EXTRACTED_FW_DIR, f"fw_{timestamp}")
+    os.makedirs(extract_dir, exist_ok=True)
     try:
-        with open(KILLCHAIN_FILE, "a") as f:
-            f.write(json.dumps(entry) + "\n")
-    except Exception as e:
-        log(f"Killchain update failed: {e}")
+        subprocess.run(["binwalk", "-e", "-C", extract_dir, firmware_file], check=True)
+        log(f"Binwalk extraction complete to: {extract_dir}")
+        append_killchain("Firmware analysis via binwalk")
+    except subprocess.CalledProcessError:
+        log("Binwalk extraction failed")
 
-def inject_firmware():
-    payload = b"INJECTED_FIRMWARE_PAYLOAD" + os.urandom(32)
-    with open(PAYLOAD_FILE, "wb") as f:
-        f.write(payload)
-    log("Payload written to reports/ota_firmware.bin")
-    with open("reports/ota_firmware_payload_base64.txt", "w") as f:
-        f.write(base64.b64encode(payload).decode())
-    log("Base64 version saved for forensic export")
+def packet_callback(pkt):
+    if pkt.haslayer(Raw):
+        payload = pkt[Raw].load
+        if b"firmware" in payload.lower() or b"\x7fELF" in payload or b"squashfs" in payload.lower():
+            log("Possible OTA payload detected")
+            extract_payload(payload)
+            push_alert()
 
-def auto_chain():
-    log("Chaining to firmware poisoner and report builder...")
-    os.system(f"python3 {CHAIN_SCRIPT_1}")
-    time.sleep(1)
-    os.system(f"python3 {CHAIN_SCRIPT_2}")
+def sniff_packets():
+    log("Starting OTA firmware sniffing...")
+    pkts = sniff(filter="ip", prn=packet_callback, timeout=20)
+    wrpcap(pcap_file, pkts)
+    log(f"Packets saved to: {pcap_file}")
+    append_killchain("OTA stream sniffed")
 
 def main():
-    log("Launching OTA firmware injector")
-    push_alert_file()
-    push_alert_websocket("OTA firmware interceptor activated")
-    update_killchain("OTA firmware payload injected")
-    inject_firmware()
-    auto_chain()
+    sniff_packets()
 
 if __name__ == "__main__":
     main()
