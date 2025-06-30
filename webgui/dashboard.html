@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>REDoT Live Dashboard</title>
+  <style>
+    body { font-family: monospace; background: #111; color: #0f0; margin: 0; padding: 0; }
+    #map { height: 40vh; }
+    #console { padding: 10px; height: 40vh; overflow-y: scroll; background: #000; }
+    #cmdInput { width: 80%; }
+  </style>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+</head>
+<body>
+  <h2>REDoT Multi-Agent Live Dashboard</h2>
+  <div id="map"></div>
+  <div id="console"></div>
+  <form onsubmit="sendCommand(); return false;">
+    <input id="agentId" placeholder="Agent ID" />
+    <input id="cmdInput" placeholder="Command to send" />
+    <button type="submit">Send</button>
+  </form>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    let ws = new WebSocket("ws://" + location.hostname + ":8765");
+    let consoleDiv = document.getElementById("console");
+    let map = L.map('map').setView([20, 0], 2);
+    let agentMarkers = {};
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+    }).addTo(map);
+
+    ws.onmessage = function(event) {
+      let data = JSON.parse(event.data);
+      let log = `[${data.timestamp || new Date().toISOString()}] ${data.agent || "unknown"}: ${data.msg || "callback"}`;
+      consoleDiv.innerHTML += log + "<br>";
+      consoleDiv.scrollTop = consoleDiv.scrollHeight;
+
+      if (data.lat && data.lon && data.agent) {
+        if (agentMarkers[data.agent]) map.removeLayer(agentMarkers[data.agent]);
+        agentMarkers[data.agent] = L.marker([data.lat, data.lon]).addTo(map).bindPopup(data.agent);
+      }
+    };
+
+    function sendCommand() {
+      fetch("/send", {
+        method: "POST",
+        body: new URLSearchParams({
+          agent: document.getElementById("agentId").value,
+          cmd: document.getElementById("cmdInput").value
+        })
+      });
+    }
+  </script>
+</body>
+</html>
