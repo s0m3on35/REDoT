@@ -49,7 +49,8 @@ def save_waveform(signal_data, sample_rate, path):
 # === CAPTURE FUNCTIONALITY ===
 def capture_rf(freq, duration, interface="hackrf"):
     print(f"[+] Capturing on {freq/1e6:.3f} MHz for {duration}s...")
-    output_bin = os.path.join(EXPORT_DIR, f"capture_{uuid.uuid4().hex}.bin")
+    uid = uuid.uuid4().hex
+    output_bin = os.path.join(EXPORT_DIR, f"capture_{uid}.bin")
     output_wav = output_bin.replace(".bin", ".wav")
     output_sub = output_bin.replace(".bin", ".sub")
     output_pcap = output_bin.replace(".bin", ".pcap")
@@ -63,28 +64,24 @@ def capture_rf(freq, duration, interface="hackrf"):
             "-n", str(2_000_000 * duration)
         ])
 
-    # Convert to .wav for audio analysis
     raw_data = np.fromfile(output_bin, dtype=np.int8)
-    audio_data = np.int16(raw_data[:len(raw_data)//2] * 256)  # basic approximation
+    audio_data = np.int16(raw_data[:len(raw_data)//2] * 256)
     save_waveform(audio_data.tobytes(), 2000000, output_wav)
 
-    # Export simulated .sub file for Flipper replay
     with open(output_sub, 'w') as f:
         f.write("Filetype: Flipper SubGhz RAW File\nVersion: 1\n")
-        for _ in range(100):  # mock signal pulses
+        for _ in range(100):
             f.write(" +400 -400\n")
 
-    # Export .pcap (stubbed)
     with open(output_pcap, 'wb') as f:
-        f.write(b'\xd4\xc3\xb2\xa1')  # pcap global header (stub for testing)
+        f.write(b'\xd4\xc3\xb2\xa1')
 
-    # MQTT Push
     try:
         publish.single(MQTT_TOPIC, payload=f"RF Capture {freq}Hz stored at {output_bin}", hostname=MQTT_BROKER)
     except Exception as e:
         print(f"[!] MQTT error: {e}")
 
-    print(f"[+] Saved to: {output_bin}, {output_wav}, {output_sub}, {output_pcap}")
+    print(f"[+] Saved: {output_bin}, {output_wav}, {output_sub}, {output_pcap}")
     visualize_entropy(output_bin)
 
 # === REPLAY FUNCTIONALITY ===
