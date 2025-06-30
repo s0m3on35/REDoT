@@ -1,13 +1,30 @@
-flask
-nmap
+# Core networking and packet manipulation
 scapy
+nmap
+requests
+pyyaml
+
+# Serial and BLE tools
 pyserial
+blesuite
+aioblescan
+
+# AI and voice interaction
 openai
 vosk
-plotly
-opencv-python
-pyyaml
-opencv-python
 pyttsx3
-pyserial
+
+# Dashboards, plotting, and real-time UI
 flask
+flask-socketio
+websocket-server
+rich
+termcolor
+
+# Visuals, RTSP, and computer vision
+opencv-python
+pillow
+numpy
+
+# Websocket client/server support
+websockets
