@@ -1,77 +1,66 @@
-# RedOT – Red Team Toolkit for Robots and OT stuff
+# RedOT – Red Team Toolkit for Robots and OT Systems
 
 ## Overview
-RedOT is a modular offensive framework for red teaming autonomous gardener robots. It includes capabilities across:
-- Wireless exploitation (BLE, RF, Wi-Fi)
-- Firmware analysis and CVE-based attacks
-- Hardware hacking (UART, JTAG)
-- AI manipulation (adversarial visuals, voice injection)
-- Covert payloads and C2 channels
+
+RedOT is a modular offensive framework for red teaming autonomous gardener robots and operational technology (OT) systems. It includes capabilities for:
+
+- Wireless exploitation: BLE, RF, Evil Twin attacks
+- Firmware analysis and automated CVE-based exploitation
+- Hardware interface attacks: UART, JTAG memory dumping
+- AI adversarial manipulation and sensor spoofing
+- Covert payloads, implants, and command-and-control over DNS
+- Real-time dashboard, multi-agent control, and GPT-based Copilot modules
 
 ---
 
-##  Modules
+## Modules
 
 ### Recon
-- `wifi_scan.py`: Scan local Wi-Fi for devices
-- `ble_scan.py`: (Coming soon)
-- `rf_sniffer.py`: (Coming soon)
+- wifi_scan.py: Wi-Fi AP and client scanner
+- ble_scan.py: BLE scanner (planned)
+- rf_sniffer.py: RF signal analyzer (planned)
 
 ### Wireless Attacks
-- `wifi_attack.py`: Evil Twin attack
-- `ble_crasher.py`: BLE advertisement flood
-- `rf_signal_cloner.py`: Replay captured RF signals
+- wifi_attack.py: Evil Twin attack with captive portal, credential logger, and implant deployment
+- ble_crasher.py: BLE advertisement flood and spoofing with multi-interface support
+- rf_signal_cloner.py: SDR-based RF replay with entropy analysis, .sub/.wav export
 
-### Firmware
-- `unpack_and_analyze.sh`: Unpacks firmware images
-- `cve_autopwn.py`: CVE matching from firmware strings
-- `firmware_poisoner.py`: Injects payloads into firmware
+### Firmware Analysis
+- unpack_and_analyze.sh: Firmware unpacking via binwalk
+- cve_autopwn.py: CVE matching and auto-exploit suggestion from firmware strings
+- firmware_poisoner.py: Payload injection and firmware config tampering
 
 ### Hardware Interface
-- `uart_auto_connect.py`: UART discovery
-- `uart_extractor.py`: Auto-connect and dump output
-- `jtag_auto_interface.py`: Simulated JTAG memory dump
+- uart_auto_connect.py: UART auto-detection
+- uart_extractor.py: UART output dump and device interaction
+- jtag_auto_interface.py: JTAG detection and memory extraction
 
 ### AI Attacks
-- `image_spoof.py`: Overlay message on live camera
-- `model_confuser.py`: Add adversarial noise to confuse AI
-- `voice_injection.py`: TTS-based voice command attack
+- image_spoof.py: Adversarial overlay injection on camera feeds
+- model_confuser.py: Adds adversarial noise to fool AI models
+- voice_injection.py: TTS-generated voice command injection attacks
 
-### Payloads
-- `watering_loop.sh`: Simulated infinite watering
-- `loop_bomb.py`: Repeating motion + watering payload
-- `dns_c2.py`: Covert command beacon via DNS
+### Payloads and C2
+- watering_loop.sh: Timed watering loop with MQTT, HTTP, Zigbee, and RF triggers
+- loop_bomb.py: Persistent actuator/motor loop bomb
+- dns_c2.py: AES-encrypted DNS-based covert channel with file transfer
+- implant_dropper.py: Deploys a stealthy agent with persistence and callback
+- stealth_agent.py: Persistent implant with encrypted callbacks, Tor proxy, and keylogging
 
-### Copilot & GUI
-- `recon_assistant.py`: GPT-powered suggestions (stub)
-- `dashboard.py`: Flask GUI (stub)
+### Copilot and Dashboard
+- dashboard_ws_server.py: Real-time WebSocket dashboard with multi-agent command control
+- recon_assistant.py: GPT-based recon planner
+- copilot_chat.py: GPT-based analyst chat interface
+- rtsp_viewer.py: Mask detection and live video anomaly spotting
+- intel_enricher.py: Auto-query Shodan, Censys, and external OSINT sources
+- killchain_builder.py: Builds attack chains and MITRE mappings from live agent data
+- report_builder.py: Generates HTML and markdown reports with embedded results
 
 ---
 
-##  Usage
+## Usage
 
-Run the main CLI launcher:
+Launch the main interactive CLI:
+
 ```bash
 bash redot.sh
-```
-
-Follow the menu to explore modules. All output logs saved under `logs/`.
-
----
-
-## Requirements
-Install with:
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## Output & Logs
-- Logs: `logs/`
-- Reports: `reports/` (future)
-- Config: `config/targets.yaml`
-
----
-
-RedOT is for **authorized red team operations only**. Use responsibly. MADE by S0m3R34P3r
