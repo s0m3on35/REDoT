@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, os, time, json, signal, sys
+import argparse, os, time, json, signal, sys, subprocess
 from scapy.all import *
 from threading import Thread
 from collections import defaultdict
@@ -201,6 +201,15 @@ def run_scan():
     sniff(iface=iface_mon, prn=sniff_wifi, timeout=duration, monitor=True)
     write_outputs()
 
+def trigger_enricher():
+    try:
+        if found:
+            ip_input = input("[+] Enter IP of interest for enrichment (or press Enter to skip): ").strip()
+            if ip_input:
+                subprocess.run(["python3", "modules/intel_enricher.py"], input=ip_input.encode())
+    except Exception as e:
+        print(f"[!] Intel enrichment failed: {e}")
+
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     load_oui()
@@ -217,4 +226,5 @@ if __name__ == "__main__":
             time.sleep(config["interval"])
     else:
         run_scan()
+        trigger_enricher()
     restore_interface()
