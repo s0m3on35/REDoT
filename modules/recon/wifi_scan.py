@@ -26,17 +26,17 @@ DEFAULT_CONFIG = {
     "interval": 0
 }
 
-parser = argparse.ArgumentParser(description="REDoT Wi-Fi Recon - Phase 3C (Stealth + Scheduling + Config)")
+parser = argparse.ArgumentParser(description="REDoT Wi-Fi Recon - Stealth + Dashboard + Scheduling")
 parser.add_argument('--config', help="Path to JSON config file")
 parser.add_argument('--iface', help="Wireless interface")
 parser.add_argument('--duration', type=int, help="Scan duration in seconds")
 parser.add_argument('--gps', action='store_true', help="Enable GPS tagging")
-parser.add_argument('--full', action='store_true', help="Enable dashboard")
+parser.add_argument('--full', action='store_true', help="Enable dashboard display")
 parser.add_argument('--stealth', action='store_true', help="Enable silent mode (no output)")
-parser.add_argument('--graph', action='store_true', help="Export Graphviz .dot")
-parser.add_argument('--ssid', help="Filter: SSID")
-parser.add_argument('--vendor', help="Filter: vendor")
-parser.add_argument('--mac-prefix', help="Filter: MAC prefix")
+parser.add_argument('--graph', action='store_true', help="Export Graphviz .dot file")
+parser.add_argument('--ssid', help="Filter by SSID")
+parser.add_argument('--vendor', help="Filter by vendor")
+parser.add_argument('--mac-prefix', help="Filter by MAC prefix")
 parser.add_argument('--interval', type=int, help="Repeat scan every N seconds (0 = once)")
 args = parser.parse_args()
 
@@ -120,7 +120,7 @@ def sniff_wifi(pkt):
                 show_table()
 
 def show_table():
-    table = Table(title="REDoT Wi-Fi Recon - Phase 3C", show_lines=True)
+    table = Table(title="REDoT Wi-Fi Recon", show_lines=True)
     table.add_column("BSSID", style="cyan", no_wrap=True)
     table.add_column("SSID", style="green")
     table.add_column("Channel")
