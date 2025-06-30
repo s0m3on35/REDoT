@@ -1,9 +1,14 @@
 #!/bin/bash
-# REDOT Master Launcher v2 - Clean Modular Bash UI
+# REDOT Master Launcher  
 
 REDOT_DIR="$(dirname "$0")"
 LOG_DIR="$REDOT_DIR/logs"
-mkdir -p "$LOG_DIR"
+mkdir -p "$LOG_DIR" "$REDOT_DIR/reports" "$REDOT_DIR/results" "$REDOT_DIR/firmware"
+
+HEADLESS=0
+[[ "$1" == "--cli" ]] && HEADLESS=1
+
+DASHBOARD_STARTED=0
 
 main_menu() {
   clear
@@ -19,6 +24,14 @@ main_menu() {
   echo "9) Reporting & Threat Intel"
   echo "10) Exit"
   echo -n "Select an option [1-10]: "
+}
+
+ensure_dashboard_running() {
+  if [ "$DASHBOARD_STARTED" -eq 0 ]; then
+    echo "[*] Launching WebSocket Dashboard Server..."
+    python3 "$REDOT_DIR/dashboard_ws_server.py" >> "$LOG_DIR/ws_server.log" 2>&1 &
+    DASHBOARD_STARTED=1
+  fi
 }
 
 recon_menu() {
@@ -110,12 +123,19 @@ iot_menu() {
 
 dashboard_menu() {
   echo "--- Copilot & Dashboard ---"
+  ensure_dashboard_running
   select opt in "GPT Copilot" "Recon Assistant" "WebSocket Dashboard Server" "Open Dashboard HTML" "RTSP Viewer" "Back"; do
     case $opt in
       "GPT Copilot") python3 "$REDOT_DIR/modules/gpt_live_copilot.py";;
       "Recon Assistant") python3 "$REDOT_DIR/copilot/recon_assistant.py";;
       "WebSocket Dashboard Server") python3 "$REDOT_DIR/dashboard_ws_server.py";;
-      "Open Dashboard HTML") python3 -m webbrowser "file://$REDOT_DIR/dashboard.html";;
+      "Open Dashboard HTML")
+        if [ "$HEADLESS" -eq 0 ]; then
+          python3 -m webbrowser "file://$REDOT_DIR/dashboard.html"
+        else
+          echo "[*] Headless mode: dashboard GUI skipped."
+        fi
+        ;;
       "RTSP Viewer") python3 "$REDOT_DIR/modules/rtsp_viewer.py";;
       "Back") return;;
     esac
@@ -135,8 +155,9 @@ reporting_menu() {
   done
 }
 
-# MAIN LOOP
+# --- MAIN LOOP ---
 while true; do
+  ensure_dashboard_running
   main_menu
   read main_choice
   case $main_choice in
