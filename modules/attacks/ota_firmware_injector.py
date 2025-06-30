@@ -1,4 +1,3 @@
-
 # modules/attacks/ota_firmware_injector.py
 
 import os
