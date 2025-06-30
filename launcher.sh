@@ -1,5 +1,5 @@
 #!/bin/bash
-# REDOT Launcher 
+# REDOT Launcher
 
 REDOT_PATH="$(dirname "$0")"
 LOG_DIR="$REDOT_PATH/logs"
@@ -60,11 +60,21 @@ matplotlib
 torch
 transformers
 tflite-runtime
+pyttsx3
+PyQt5
 EOF
 fi
 
 $PYTHON -m pip install --quiet --upgrade pip
 $PYTHON -m pip install --quiet -r "$REQ_FILE"
+
+# --- Auto-launch Dashboard unless --cli passed ---
+if [[ "$1" != "--cli" ]]; then
+    echo "[*] Auto-starting REDOT Dashboard..."
+    $PYTHON "$REDOT_PATH/dashboard_ws_server.py" >> "$LOG_DIR/ws_server.log" 2>&1 &
+    sleep 2
+    $PYTHON -m webbrowser "file://$REDOT_PATH/dashboard.html" &
+fi
 
 # --- Interactive Menu ---
 show_menu() {
@@ -83,72 +93,34 @@ show_menu() {
     echo "11) Reporting: Kill Chain Builder"
     echo "12) Reporting: Report Generator"
     echo "13) Visuals: RTSP Feed Viewer"
-    echo "14) Exit"
-    echo -n "Enter choice [1-14]: "
+    echo "14) Firmware: Poisoner"
+    echo "15) Firmware: Unpack & Analyze"
+    echo "16) GUI Launcher"
+    echo "17) Exit"
+    echo -n "Enter choice [1-17]: "
 }
 
 while true; do
     show_menu
     read choice
     case $choice in
-        1)
-            echo "Launching WiFi Scan..."
-            $PYTHON "$REDOT_PATH/modules/recon/wifi_scan.py" >> "$LOG_DIR/wifi_scan.log" 2>&1 &
-            ;;
-        2)
-            echo "Launching BLE Scan..."
-            $PYTHON "$REDOT_PATH/modules/recon/ble_scan.py" >> "$LOG_DIR/ble_scan.log" 2>&1 &
-            ;;
-        3)
-            echo "Launching RF Sniffer..."
-            $PYTHON "$REDOT_PATH/modules/recon/rf_sniffer.py" >> "$LOG_DIR/rf_sniffer.log" 2>&1 &
-            ;;
-        4)
-            echo "Launching Evil Twin Attack..."
-            $PYTHON "$REDOT_PATH/wifi_attack.py" >> "$LOG_DIR/wifi_attack.log" 2>&1 &
-            ;;
-        5)
-            echo "Launching Implant Dropper..."
-            $PYTHON "$REDOT_PATH/implant_dropper.py" >> "$LOG_DIR/implant_dropper.log" 2>&1 &
-            ;;
-        6)
-            echo "Launching Stealth Agent..."
-            $PYTHON "$REDOT_PATH/modules/stealth_agent.py" >> "$LOG_DIR/stealth_agent.log" 2>&1 &
-            ;;
-        7)
-            echo "Launching Dashboard WebSocket Server..."
-            $PYTHON "$REDOT_PATH/dashboard_ws_server.py" >> "$LOG_DIR/ws_server.log" 2>&1 &
-            ;;
-        8)
-            echo "Opening Live Dashboard UI..."
-            $PYTHON -m webbrowser "file://$REDOT_PATH/dashboard.html" &
-            ;;
-        9)
-            echo "Launching Intel Enricher..."
-            $PYTHON "$REDOT_PATH/modules/intel_enricher.py" >> "$LOG_DIR/intel_enricher.log" 2>&1 &
-            ;;
-        10)
-            echo "Launching GPT Copilot..."
-            $PYTHON "$REDOT_PATH/modules/gpt_live_copilot.py" >> "$LOG_DIR/gpt_copilot.log" 2>&1 &
-            ;;
-        11)
-            echo "Launching Kill Chain Builder..."
-            $PYTHON "$REDOT_PATH/modules/killchain_builder.py" >> "$LOG_DIR/killchain.log" 2>&1 &
-            ;;
-        12)
-            echo "Launching Report Builder..."
-            $PYTHON "$REDOT_PATH/modules/report_builder.py" >> "$LOG_DIR/report.log" 2>&1 &
-            ;;
-        13)
-            echo "Launching RTSP Viewer..."
-            $PYTHON "$REDOT_PATH/modules/rtsp_viewer.py" >> "$LOG_DIR/rtsp_viewer.log" 2>&1 &
-            ;;
-        14)
-            echo "Exiting launcher."
-            exit 0
-            ;;
-        *)
-            echo "Invalid option. Please select a valid number."
-            ;;
+        1) echo "Launching WiFi Scan..."; $PYTHON "$REDOT_PATH/modules/recon/wifi_scan.py" >> "$LOG_DIR/wifi_scan.log" 2>&1 & ;;
+        2) echo "Launching BLE Scan..."; $PYTHON "$REDOT_PATH/modules/recon/ble_scan.py" >> "$LOG_DIR/ble_scan.log" 2>&1 & ;;
+        3) echo "Launching RF Sniffer..."; $PYTHON "$REDOT_PATH/modules/recon/rf_sniffer.py" >> "$LOG_DIR/rf_sniffer.log" 2>&1 & ;;
+        4) echo "Launching Evil Twin Attack..."; $PYTHON "$REDOT_PATH/wifi_attack.py" >> "$LOG_DIR/wifi_attack.log" 2>&1 & ;;
+        5) echo "Launching Implant Dropper..."; $PYTHON "$REDOT_PATH/implant_dropper.py" >> "$LOG_DIR/implant_dropper.log" 2>&1 & ;;
+        6) echo "Launching Stealth Agent..."; $PYTHON "$REDOT_PATH/modules/stealth_agent.py" >> "$LOG_DIR/stealth_agent.log" 2>&1 & ;;
+        7) echo "Launching Dashboard WebSocket Server..."; $PYTHON "$REDOT_PATH/dashboard_ws_server.py" >> "$LOG_DIR/ws_server.log" 2>&1 & ;;
+        8) echo "Opening Live Dashboard UI..."; $PYTHON -m webbrowser "file://$REDOT_PATH/dashboard.html" & ;;
+        9) echo "Launching Intel Enricher..."; $PYTHON "$REDOT_PATH/modules/intel_enricher.py" >> "$LOG_DIR/intel_enricher.log" 2>&1 & ;;
+        10) echo "Launching GPT Copilot..."; $PYTHON "$REDOT_PATH/modules/gpt_live_copilot.py" >> "$LOG_DIR/gpt_copilot.log" 2>&1 & ;;
+        11) echo "Launching Kill Chain Builder..."; $PYTHON "$REDOT_PATH/modules/killchain_builder.py" >> "$LOG_DIR/killchain.log" 2>&1 & ;;
+        12) echo "Launching Report Builder..."; $PYTHON "$REDOT_PATH/modules/report_builder.py" >> "$LOG_DIR/report.log" 2>&1 & ;;
+        13) echo "Launching RTSP Viewer..."; $PYTHON "$REDOT_PATH/modules/rtsp_viewer.py" >> "$LOG_DIR/rtsp_viewer.log" 2>&1 & ;;
+        14) echo "Launching Firmware Poisoner..."; $PYTHON "$REDOT_PATH/modules/firmware/firmware_poisoner.py" >> "$LOG_DIR/fw_poisoner.log" 2>&1 & ;;
+        15) echo "Launching Firmware Unpack..."; bash "$REDOT_PATH/modules/firmware/unpack_and_analyze.sh" >> "$LOG_DIR/fw_unpack.log" 2>&1 & ;;
+        16) echo "Launching REDOT GUI..."; $PYTHON "$REDOT_PATH/gui_launcher.py" >> "$LOG_DIR/gui_launcher.log" 2>&1 & ;;
+        17) echo "Exiting launcher."; exit 0 ;;
+        *) echo "Invalid option. Please select a valid number." ;;
     esac
 done
