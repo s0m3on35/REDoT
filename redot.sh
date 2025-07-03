@@ -60,6 +60,10 @@ fi
 $PYTHON -m pip install --upgrade pip >/dev/null 2>&1
 $PYTHON -m pip install -r "$REQ_FILE" >/dev/null 2>&1
 
+# --- Auto-update device map and README.md ---
+echo "[*] Updating module-to-device mapping..."
+$PYTHON "$REDOT_PATH/tools/update_module_device_map.py"
+
 # --- Optional CLI Only ---
 if [[ "$1" == "--cli" ]]; then
     echo "[*] CLI mode enabled."
