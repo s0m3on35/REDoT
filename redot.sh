@@ -60,9 +60,9 @@ fi
 $PYTHON -m pip install --upgrade pip >/dev/null 2>&1
 $PYTHON -m pip install -r "$REQ_FILE" >/dev/null 2>&1
 
-# --- Auto-update module device map and README ---
-echo "[*] Updating device mappings..."
-$PYTHON "$REDOT_PATH/tools/update_module_device_map.py" >> "$LOG_DIR/update_map.log" 2>&1
+# --- Auto-update device map and README.md ---
+echo "[*] Updating module-to-device mapping..."
+$PYTHON "$REDOT_PATH/tools/update_module_device_map.py"
 
 # --- Optional CLI Only ---
 if [[ "$1" == "--cli" ]]; then
@@ -91,8 +91,8 @@ show_menu() {
     echo " 8) Run Evil Twin Attack"
     echo " 9) Drop Implant"
     echo "10) Launch Stealth Agent"
-    echo "11) Ready2Go: Screen Override"
-    echo "12) Exit"
+    echo "11) Exit"
+    echo "12) RUN READY2GO FULL CHAIN"
     echo "------------------------------"
     echo -n "Enter selection: "
 }
@@ -111,8 +111,8 @@ while true; do
         8) echo "[*] Running Evil Twin..."; $PYTHON "$REDOT_PATH/wifi_attack.py" >> "$LOG_DIR/wifi_attack.log" 2>&1 ;;
         9) echo "[*] Dropping implant..."; $PYTHON "$REDOT_PATH/implant_dropper.py" >> "$LOG_DIR/implant_dropper.log" 2>&1 ;;
         10) echo "[*] Launching stealth agent..."; $PYTHON "$REDOT_PATH/modules/stealth_agent.py" >> "$LOG_DIR/stealth_agent.log" 2>&1 ;;
-        11) echo "[*] Launching Screen Override..."; $PYTHON "$REDOT_PATH/modules/exploits/screen_override.py" >> "$LOG_DIR/screen_override.log" 2>&1 ;;
-        12) echo "[*] Exiting."; exit 0 ;;
+        11) echo "[*] Exiting."; exit 0 ;;
+        12) echo "[*] Running READY2GO chain..."; $PYTHON "$REDOT_PATH/modules/chains/ready2go_chain.py" >> "$LOG_DIR/ready2go.log" 2>&1 ;;
         *) echo "[!] Invalid option." ;;
     esac
 done
