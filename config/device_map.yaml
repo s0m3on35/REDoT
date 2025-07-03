@@ -1,7 +1,28 @@
-wifi_attack.py: WLAN Adapter
 ble_crasher.py: BLE Adapter
-rfid_cloner.py: Flipper Zero
-ota_firmware_injector.py: OTA Interceptor
-jtag_auto_interface.py: JTAG Probe
-uart_extractor.py: UART Serial Interface
+broadcast_emergency_spoofer.py: Network Access
+can_bus_payload_detonator.py: CAN Interface
+copilot_chat.py: AI Engine
+cve_autopwn.py: Firmware Image
+dashboard.html: Web Dashboard
+dashboard_ws_server.py: Web Dashboard
 dns_c2.py: DNS Resolver
+firmware_poisoner.py: Firmware Image
+image_spoof.py: Camera Feed
+implant_dropper.py: Target System
+iot_led_sign_controller.py: LED Sign
+jtag_auto_interface.py: JTAG Probe
+killchain_builder.py: Agent Logger
+loop_bomb.py: IoT Network
+model_confuser.py: ML Model
+ota_firmware_injector.py: Firmware Image
+recon_assistant.py: Recon Subsystem
+report_builder.py: Reporting Engine
+rf_signal_cloner.py: SDR
+rfid_cloner.py: RFID Reader
+rtsp_viewer.py: Camera Stream
+screen_firmware_overwriter.py: Firmware Image
+stealth_agent.py: Target System
+uart_extractor.py: UART Interface
+voice_injection.py: Smart Speaker
+watering_loop.sh: Irrigation Controller
+wifi_attack.py: WLAN Adapter
