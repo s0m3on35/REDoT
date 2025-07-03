@@ -3,64 +3,82 @@
 
 ## Overview
 
-RedOT is a modular, fully operational toolkit designed for red teaming autonomous robots, OT/ICS systems, and smart environments. It includes advanced capabilities for wireless exploitation, firmware manipulation, hardware interface attacks, AI deception, covert payloads, and real-time control via a multi-agent dashboard.
+RedOT is a modular, fully operational toolkit designed for red teaming autonomous robots, OT/ICS systems, smart environments, and embedded devices. It includes advanced capabilities for wireless exploitation, firmware manipulation, hardware interface attacks, AI deception, covert payloads, and real-time agent control through a multi-agent dashboard.
 
-## Core Features
+## Core Capabilities
 
-- Wireless attacks: BLE spoofing, RF replay, Evil Twin with implant injection
-- Firmware unpacking, payload poisoning, and CVE-based exploitation
-- UART and JTAG hardware interfaces with auto extraction and binary dumping
-- AI manipulation: adversarial images, TTS command injection, spoofed sensors
-- Covert communication: DNS C2 with AES, Tor proxy, and persistence logic
-- Real-time dashboard with agent control, alert feed, and integrated Copilot
-- GPT-assisted module chaining, report generation, and post-execution automation
+- Wireless exploitation: BLE spoofing, Evil Twin APs, RF replay, jamming
+- Firmware: unpacking, patching, poisoning, automated CVE-based payloads
+- Hardware interfaces: UART and JTAG memory extraction and firmware dumps
+- AI manipulation: adversarial image injection, model confusion, TTS command injection
+- Covert operations: DNS C2, AES encryption, stealth implants, persistence logic
+- Web dashboard: agent control, RTSP feeds, alerts, chat-based Copilot
+- GPT integration: recon planning, module chaining, kill chain generation, report creation
 
-## Modules
+## Module Categories
 
 ### Recon
-- `wifi_scan.py`: Wi-Fi scanning with filtering and enrichment
-- `ble_scan.py`: BLE beacon and vendor discovery
-- `rf_sniffer.py`: RF analysis with entropy visualization and `.pcap` export
+
+- `wifi_scan.py` – Wi-Fi access point and client enumeration with filters
+- `ble_scan.py` – BLE advertisement parsing, vendor tagging, passive mapping
+- `rf_sniffer.py` – SDR-based RF entropy logging, signal capture (.pcap/.wav)
 
 ### Wireless Attacks
-- `wifi_attack.py`: Evil Twin with credential capture, implant dropper, auto post-execution
-- `ble_crasher.py`: BLE flooding, spoofed device IDs, multi-interface support
-- `rf_signal_cloner.py`: RF capture and replay with .sub/.wav/.pcap generation
 
-### Firmware Analysis
-- `unpack_and_analyze.sh`: Unpacks firmware and auto-triggers follow-up modules
-- `firmware_poisoner.py`: Injects payloads with reverse shell and dashboard alerts
-- `cve_autopwn.py`: Extracts CVEs from firmware for automated exploitation
-- Fully chained with `uart_extractor.py`, dashboard auto-actions, and Metasploit
+- `wifi_attack.py` – Evil Twin with credential capture, implant deployment, post-ex chaining
+- `ble_crasher.py` – BLE flooding with spoofed MACs and device names
+- `rf_signal_cloner.py` – Real RF capture and replay with `.sub`, `.wav`, `.pcap` export
 
-### Hardware Interface
-- `uart_auto_connect.py`: Detects active UART devices
-- `uart_extractor.py`: Dumps memory, logs, and firmware from UART
-- `jtag_auto_interface.py`: Extracts memory and binaries via JTAG interface
+### Firmware Analysis and Exploits
 
-### AI Attacks
-- `image_spoof.py`: Overlays adversarial patterns on camera feeds
-- `model_confuser.py`: Confuses AI classifiers using pattern injection
-- `voice_injection.py`: Injects commands via generated TTS audio
+- `unpack_and_analyze.sh` – Extracts embedded firmware formats and triggers CVE matching
+- `firmware_poisoner.py` – Injects payloads into firmware images with integrity checks
+- `cve_autopwn.py` – CVE enumeration, proof-of-concept testing, automated matching
+- `uart_extractor.py` – Dumps memory, firmware, logs over UART automatically
+- `jtag_auto_interface.py` – Dumps full binary image over JTAG, detects and uploads implants
 
-### Payloads and Command & Control
-- `watering_loop.sh`: Triggers actuator logic across Zigbee, MQTT, HTTP, and RF
-- `loop_bomb.py`: Loops commands across actuators with persistence options
-- `dns_c2.py`: AES-encrypted DNS-based covert channel with exfil and command queue
-- `implant_dropper.py`: Deploys persistent implant to victim system
-- `stealth_agent.py`: Covert beaconing agent with file exfil, persistence, and keylogger
+### Hardware Interface Attacks
 
-### Copilot and Dashboard
-- `dashboard_ws_server.py`: WebSocket server powering real-time UI
-- `dashboard.html`: HTML-based UI for agent control and event visualization
-- `copilot_chat.py`: GPT-powered command assistant with chain logic
-- `recon_assistant.py`: GPT-driven recon planning module
-- `killchain_builder.py`: Maps live events to MITRE and timelines
-- `report_builder.py`: Generates structured output reports with full artifacts
-- `rtsp_viewer.py`: Monitors live camera feeds for anomalies
+- `uart_auto_connect.py` – Detects UART interfaces across baud rates
+- `jtag_auto_interface.py` – Reads memory segments, supports flash dump
+- `relay_attack_orchestrator.py` – Coordinates BLE/UWB-based relay attacks with `.pcap` export
+
+### AI Deception and Adversarial Attacks
+
+- `image_spoof.py` – Injects adversarial patches into live camera feeds
+- `model_confuser.py` – Real-time ML classifier confusion through pixel modification
+- `voice_injection.py` – Generates TTS payloads for smart speaker injection
+
+### Payloads and C2
+
+- `dns_c2.py` – AES-encrypted DNS C2, rotating resolvers, command queue, persistence
+- `implant_dropper.py` – Persistent implant installer with dashboard callback
+- `stealth_agent.py` – Covert beacon, file exfil, keylogging, crontab-based persistence
+- `loop_bomb.py` – Infinite loop control across sensors/actuators via Zigbee, MQTT, HTTP
+- `watering_loop.sh` – Cross-protocol irrigation hijack and actuator trigger
+
+### Advanced Exploits and Field Attacks
+
+- `rfid_cloner.py` – Clones RFID tags, supports Flipper-compatible `.sub` files
+- `can_bus_payload_detonator.py` – Sends malicious CAN frames to automotive ECUs
+- `ota_firmware_injector.py` – Intercepts OTA updates, modifies and delivers poisoned firmware
+- `screen_firmware_overwriter.py` – Overwrites public screens with spoofed firmware visuals
+- `broadcast_emergency_spoofer.py` – Spoofs multicast alert messages on signage networks
+- `iot_led_sign_controller.py` – Injects commands into LED displays over Telnet
+
+### Dashboard and Copilot
+
+- `dashboard_ws_server.py` – WebSocket server powering real-time agent feeds
+- `dashboard.html` – Real-time web GUI with agent list, map, controls, and alert stream
+- `copilot_chat.py` – GPT-integrated command assistant for recon and chaining
+- `recon_assistant.py` – Automatically generates recon sequences and filters
+- `killchain_builder.py` – Maps agent activity to MITRE ATT&CK and event timeline
+- `report_builder.py` – Creates detailed post-op reports with artifacts and summaries
+- `rtsp_viewer.py` – Streams live camera feeds with anomaly detection overlay
 
 ## Usage
 
-### Launch CLI interface
+### Launch RedOT
+
 ```bash
 bash redot.sh
