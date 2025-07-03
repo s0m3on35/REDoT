@@ -1,5 +1,5 @@
 
-# RedOT – Red Team Toolkit for Robots and OT Systems
+# RedOT – Red Team Toolkit for OT Systems
 
 ## Overview
 
