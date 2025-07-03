@@ -1,0 +1,5 @@
+rfid_cloner.py: Flipper Zero
+wifi_attack.py: WLAN Adapter
+ble_crasher.py: BLE Adapter
+ota_firmware_injector.py: OTA Capture Proxy
+iot_led_sign_controller.py: Telnet Access
