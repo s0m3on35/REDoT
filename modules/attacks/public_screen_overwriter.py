@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# modules/attacks/public_screen_overwriter.py
+
 import os
 import time
 import argparse
