@@ -1,5 +1,5 @@
 #!/bin/bash
-# REDOT Toolkit Launcher
+# REDOT Toolkit Launcher with Auto-Detection and READY2GO
 
 REDOT_PATH="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$REDOT_PATH/logs"
@@ -64,6 +64,22 @@ $PYTHON -m pip install -r "$REQ_FILE" >/dev/null 2>&1
 echo "[*] Updating module-to-device mapping..."
 $PYTHON "$REDOT_PATH/tools/update_module_device_map.py"
 
+# --- Auto-Detect Interfaces ---
+echo "[*] Detecting interfaces..."
+WIFI_IFACE=$(iw dev | awk '$1=="Interface"{print $2}' | grep -E 'wlan[0-9]+')
+BT_AVAILABLE=$(hciconfig 2>/dev/null | grep -i hci)
+
+echo "[*] Detected Wi-Fi Interface: ${WIFI_IFACE:-None}"
+if [ -z "$WIFI_IFACE" ]; then
+    echo "[!] No Wi-Fi interface found. Wireless attacks may fail."
+fi
+
+if [ -n "$BT_AVAILABLE" ]; then
+    echo "[*] Bluetooth available."
+else
+    echo "[!] Bluetooth not detected."
+fi
+
 # --- Optional CLI Only ---
 if [[ "$1" == "--cli" ]]; then
     echo "[*] CLI mode enabled."
@@ -91,8 +107,9 @@ show_menu() {
     echo " 8) Run Evil Twin Attack"
     echo " 9) Drop Implant"
     echo "10) Launch Stealth Agent"
-    echo "11) Exit"
-    echo "12) RUN READY2GO FULL CHAIN"
+    echo "11) Run Screen Override"
+    echo "12) READY2GO Full Chain Attack"
+    echo "13) Exit"
     echo "------------------------------"
     echo -n "Enter selection: "
 }
@@ -111,8 +128,9 @@ while true; do
         8) echo "[*] Running Evil Twin..."; $PYTHON "$REDOT_PATH/wifi_attack.py" >> "$LOG_DIR/wifi_attack.log" 2>&1 ;;
         9) echo "[*] Dropping implant..."; $PYTHON "$REDOT_PATH/implant_dropper.py" >> "$LOG_DIR/implant_dropper.log" 2>&1 ;;
         10) echo "[*] Launching stealth agent..."; $PYTHON "$REDOT_PATH/modules/stealth_agent.py" >> "$LOG_DIR/stealth_agent.log" 2>&1 ;;
-        11) echo "[*] Exiting."; exit 0 ;;
-        12) echo "[*] Running READY2GO chain..."; $PYTHON "$REDOT_PATH/modules/chains/ready2go_chain.py" >> "$LOG_DIR/ready2go.log" 2>&1 ;;
+        11) echo "[*] Running screen override..."; $PYTHON "$REDOT_PATH/modules/exploits/screen_override.py" >> "$LOG_DIR/screen_override.log" 2>&1 ;;
+        12) echo "[*] Launching READY2GO chain..."; $PYTHON "$REDOT_PATH/modules/orchestration/ready2go_chain.py" >> "$LOG_DIR/ready2go.log" 2>&1 ;;
+        13) echo "[*] Exiting."; exit 0 ;;
         *) echo "[!] Invalid option." ;;
     esac
 done
