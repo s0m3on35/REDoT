@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# gui_launcher.py - REDOT Enhanced GUI Launcher (clean version)
+# gui_launcher.py - REDOT 
 
 import os
 import subprocess
