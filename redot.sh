@@ -1,14 +1,28 @@
 #!/bin/bash
-# REDOT Toolkit Launcher with Auto-Detection and READY2GO
+# REDOT Toolkit Launcher with Auto-Detection and READY2GO + Virtual Env Support
 
 REDOT_PATH="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$REDOT_PATH/logs"
 REQ_FILE="$REDOT_PATH/requirements.txt"
-PYTHON=$(which python3)
+VENV_DIR="$REDOT_PATH/.venv"
+PYTHON="$VENV_DIR/bin/python3"
 
 mkdir -p "$LOG_DIR"
 
-# --- System Dependencies ---
+# --- Step 1: Virtual Environment Setup ---
+if [ ! -d "$VENV_DIR" ]; then
+    echo "[*] Creating Python virtual environment..."
+    python3 -m venv "$VENV_DIR"
+    if [ $? -ne 0 ]; then
+        echo "[!] Failed to create virtual environment."
+        exit 1
+    fi
+fi
+
+echo "[*] Activating virtual environment..."
+source "$VENV_DIR/bin/activate"
+
+# --- Step 2: System Dependencies ---
 echo "[*] Checking system dependencies..."
 MISSING_BINS=()
 for bin in aircrack-ng hostapd iw ifconfig curl git; do
@@ -32,8 +46,8 @@ if [ ${#MISSING_BINS[@]} -gt 0 ]; then
     fi
 fi
 
-# --- Python Dependencies ---
-echo "[*] Ensuring Python environment..."
+# --- Step 3: Python Dependencies ---
+echo "[*] Ensuring Python dependencies..."
 if [ ! -f "$REQ_FILE" ]; then
     echo "[*] Creating default requirements.txt..."
     cat <<EOF > "$REQ_FILE"
@@ -60,11 +74,11 @@ fi
 $PYTHON -m pip install --upgrade pip >/dev/null 2>&1
 $PYTHON -m pip install -r "$REQ_FILE" >/dev/null 2>&1
 
-# --- Auto-update device map and README.md ---
+# --- Step 4: Auto-update device map and README.md ---
 echo "[*] Updating module-to-device mapping..."
 $PYTHON "$REDOT_PATH/tools/update_module_device_map.py"
 
-# --- Auto-Detect Interfaces ---
+# --- Step 5: Auto-Detect Interfaces ---
 echo "[*] Detecting interfaces..."
 WIFI_IFACE=$(iw dev | awk '$1=="Interface"{print $2}' | grep -E 'wlan[0-9]+')
 BT_AVAILABLE=$(hciconfig 2>/dev/null | grep -i hci)
@@ -80,7 +94,7 @@ else
     echo "[!] Bluetooth not detected."
 fi
 
-# --- Optional CLI Only ---
+# --- Step 6: Optional CLI Only Mode ---
 if [[ "$1" == "--cli" ]]; then
     echo "[*] CLI mode enabled."
 else
@@ -91,7 +105,7 @@ else
     $PYTHON -m webbrowser "file://$REDOT_PATH/webgui/dashboard.html" &
 fi
 
-# --- Menu ---
+# --- Step 7: Interactive Menu ---
 show_menu() {
     echo ""
     echo "=============================="
