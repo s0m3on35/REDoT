@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# REDoT: Enhanced RF SDR Recon + Capture
+#
 
 import os
 import sys
