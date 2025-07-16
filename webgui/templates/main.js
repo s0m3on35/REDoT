@@ -1,55 +1,50 @@
-// REDoT Web Console - main.js
-// Handles dynamic UI, module execution, and WebSocket streaming
+// REDoT Operator Consol
 
-const API_BASE = "/api";
-const terminal = document.getElementById("termBox");
+
+const API = "/api";
+const terminal = document.getElementById("terminalOutput");
+const moduleSelect = document.getElementById("moduleSelect");
+const paramForm = document.getElementById("inputs");
+const agentSelect = document.getElementById("agentSelect");
+const historyPanel = document.getElementById("historyLog");
+
 let socket = null;
-let execId = null;
 
-// Initialize system
+// INIT
 window.onload = () => {
-  fetchModules();
-  document.getElementById("runBtn").addEventListener("click", runSelectedModule);
-  document.getElementById("clearBtn").addEventListener("click", () => { terminal.textContent = ""; });
-  document.getElementById("refreshMods").addEventListener("click", fetchModules);
-  document.getElementById("moduleSelect").addEventListener("change", updateFormInputs);
+  loadModules();
+  document.getElementById("runBtn").addEventListener("click", runModule);
+  document.getElementById("clearBtn").addEventListener("click", () => terminal.textContent = "");
+  document.getElementById("downloadBtn").addEventListener("click", downloadLog);
+  moduleSelect.addEventListener("change", buildFormInputs);
 };
 
-// Fetch available modules
-function fetchModules() {
-  fetch(`${API_BASE}/modules`)
+// Load available modules from backend
+function loadModules() {
+  fetch(`${API}/modules`)
     .then(res => res.json())
-    .then(data => {
-      const select = document.getElementById("moduleSelect");
-      select.innerHTML = "";
-      data.forEach(mod => {
-        const option = document.createElement("option");
-        option.value = mod.path;
-        option.textContent = mod.name;
-        option.dataset.inputs = JSON.stringify(mod.inputs || []);
-        select.appendChild(option);
+    .then(modules => {
+      moduleSelect.innerHTML = "";
+      modules.forEach(mod => {
+        const opt = document.createElement("option");
+        opt.value = mod.path;
+        opt.textContent = mod.name;
+        opt.dataset.inputs = JSON.stringify(mod.inputs || []);
+        moduleSelect.appendChild(opt);
       });
-      updateFormInputs(); // Trigger initial input generation
-    })
-    .catch(err => {
-      terminal.textContent = `Error loading modules: ${err}`;
+      buildFormInputs();
     });
 }
 
-// Generate inputs for selected module
-function updateFormInputs() {
-  const select = document.getElementById("moduleSelect");
-  const selected = select.options[select.selectedIndex];
+// Dynamically create input fields for selected module
+function buildFormInputs() {
+  const selected = moduleSelect.options[moduleSelect.selectedIndex];
   const inputs = JSON.parse(selected.dataset.inputs || "[]");
-
-  const form = document.getElementById("paramForm");
-  form.innerHTML = "";
+  paramForm.innerHTML = "";
 
   inputs.forEach(input => {
-    const row = document.createElement("div");
-    row.className = "row";
-
     const label = document.createElement("label");
+    label.className = "param-label";
     label.textContent = `--${input.name}`;
 
     const field = document.createElement("input");
@@ -57,59 +52,84 @@ function updateFormInputs() {
     field.name = input.name;
     field.placeholder = input.description || "";
 
-    row.appendChild(label);
-    row.appendChild(field);
-    form.appendChild(row);
+    paramForm.appendChild(label);
+    paramForm.appendChild(field);
   });
 }
 
-// Run selected module
-function runSelectedModule() {
-  const select = document.getElementById("moduleSelect");
-  const path = select.value;
+// Run module and start output stream
+function runModule() {
+  const selected = moduleSelect.options[moduleSelect.selectedIndex];
+  const path = selected.value;
 
-  const formData = new FormData(document.getElementById("paramForm"));
   const inputs = {};
-  formData.forEach((value, key) => {
-    inputs[key] = value;
+  const fields = paramForm.querySelectorAll("input");
+  fields.forEach(input => {
+    if (input.value.trim() !== "") {
+      inputs[input.name] = input.value;
+    }
   });
 
-  fetch(`${API_BASE}/run`, {
+  fetch(`${API}/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path, inputs })
   })
   .then(res => res.json())
   .then(data => {
-    execId = data.exec_id;
+    const execId = data.exec_id;
     terminal.textContent = "";
-    openSocketStream(execId);
-  })
-  .catch(err => {
-    terminal.textContent = `Error running module: ${err}`;
+    appendToHistory(selected.textContent, inputs);
+    connectWebSocket(execId);
   });
 }
 
-// WebSocket stream output from backend
-function openSocketStream(execId) {
+// Connect to WebSocket for live output
+function connectWebSocket(execId) {
   if (socket) socket.close();
 
-  socket = new WebSocket(`ws://${window.location.hostname}:8765/ws/${execId}`);
-
-  socket.onopen = () => {
-    console.log(`WebSocket connected to exec_id: ${execId}`);
-  };
+  const wsUrl = `ws://${window.location.hostname}:8765/ws/${execId}`;
+  socket = new WebSocket(wsUrl);
 
   socket.onmessage = (event) => {
     terminal.textContent += event.data;
     terminal.scrollTop = terminal.scrollHeight;
   };
 
-  socket.onerror = (err) => {
-    terminal.textContent += `\n[!] WebSocket error: ${err.message}`;
+  socket.onerror = () => {
+    terminal.textContent += "\n[!] WebSocket error.";
   };
 
   socket.onclose = () => {
-    console.log(`WebSocket closed for exec_id: ${execId}`);
+    console.log("WebSocket closed.");
   };
+}
+
+// Append command to history panel
+function appendToHistory(name, inputs) {
+  const entry = document.createElement("div");
+  entry.className = "history-entry";
+
+  const meta = document.createElement("div");
+  meta.className = "history-meta";
+  meta.innerHTML = `<span class="command-name">${name}</span><br/><span class="command-target">${Object.values(inputs).join(" ")}</span>`;
+
+  const time = document.createElement("div");
+  time.className = "history-time";
+  time.textContent = new Date().toLocaleTimeString();
+
+  entry.appendChild(meta);
+  entry.appendChild(time);
+  historyPanel.prepend(entry);
+}
+
+// Export log contents
+function downloadLog() {
+  const blob = new Blob([terminal.textContent], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "redot_log.txt";
+  a.click();
+  URL.revokeObjectURL(url);
 }
