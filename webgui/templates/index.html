@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>REDoT :: Web Console</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code&display=swap" rel="stylesheet">
+  <script src="https://kit.fontawesome.com/a2e8b6f84a.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="container">
+    <header>
+      <h1>REDoT :: Red Team Operator Terminal</h1>
+      <div class="agent-select">
+        <label for="agent">Agent:</label>
+        <select id="agent">
+          <option value="local">Localhost</option>
+          <!-- Populated from backend if multi-agent -->
+        </select>
+      </div>
+    </header>
+
+    <section id="module-controls">
+      <div class="module-row">
+        <label for="moduleSelect">Select Module:</label>
+        <select id="moduleSelect"></select>
+        <button id="refreshBtn" title="Refresh Modules"><i class="fas fa-sync-alt"></i></button>
+        <button id="loadConfigBtn" title="Load Module Config"><i class="fas fa-cog"></i></button>
+      </div>
+
+      <div id="inputForm">
+        <!-- Dynamic inputs per module will be injected here -->
+      </div>
+
+      <div class="action-buttons">
+        <button id="runBtn"><i class="fas fa-play"></i> Run Module</button>
+        <button id="clearBtn"><i class="fas fa-trash-alt"></i> Clear Output</button>
+        <button id="downloadBtn"><i class="fas fa-download"></i> Download Output</button>
+      </div>
+    </section>
+
+    <section id="output-section">
+      <h2>Terminal Output</h2>
+      <div id="outputBox" class="terminal"></div>
+    </section>
+
+    <section id="copilot-panel">
+      <h2>Copilot Suggestions</h2>
+      <div id="copilotOutput">
+        <!-- AI Copilot hints (chaining, tactics) -->
+      </div>
+    </section>
+  </div>
+
+  <script src="/static/main.js"></script>
+</body>
+</html>
