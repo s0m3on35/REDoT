@@ -18,11 +18,11 @@ CONFIG_EXT = ".json"
 app = Flask(__name__)
 CORS(app)
 
-# Ensure log/results directories exist
+# Ensure directories exist
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-executions = {}  # Holds subprocess references and output logs
+executions = {}  # Stores running processes and logs
 
 
 def discover_modules():
@@ -36,7 +36,6 @@ def discover_modules():
             "output": ""
         }
 
-        # Look for sidecar .json metadata
         metadata_file = pyfile.with_suffix(CONFIG_EXT)
         if metadata_file.exists():
             try:
@@ -46,7 +45,6 @@ def discover_modules():
             except Exception:
                 pass
         else:
-            # Parse docstring metadata if no config found
             try:
                 with open(pyfile) as f:
                     first_lines = "".join([next(f) for _ in range(10)])
@@ -83,7 +81,6 @@ def api_run_module():
     if not module_path or not os.path.isfile(module_path):
         return jsonify({"error": "Invalid module path"}), 400
 
-    # Build the command
     args = ["python3", module_path]
     for k, v in inputs.items():
         args.append(f"--{k}")
@@ -110,13 +107,30 @@ def api_run_module():
 def api_get_output(exec_id):
     info = executions.get(exec_id)
     if not info:
-        return jsonify({"error": "Execution not found"}), 404
+        return jsonify({"error": "Execution ID not found."}), 404
+
+    logfile_path = info.get("log")
+    if not logfile_path or not os.path.isfile(logfile_path):
+        return jsonify({"error": "Log file not available."}), 404
+
     try:
-        with open(info["log"], "r") as f:
-            content = f.read()
-        return jsonify({"log": content})
+        with open(logfile_path, "r") as f:
+            log_data = f.read()
+
+        proc = info.get("proc")
+        done = proc.poll() is not None if proc else True
+
+        return jsonify({
+            "log": log_data,
+            "done": done
+        })
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": f"Log read error: {str(e)}",
+            "log": "",
+            "done": True
+        }), 500
 
 
 @app.route("/api/results/<filename>", methods=["GET"])
