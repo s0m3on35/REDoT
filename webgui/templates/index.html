@@ -2,56 +2,60 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>REDoT :: Web Console</title>
-  <link rel="stylesheet" href="/static/style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code&display=swap" rel="stylesheet">
-  <script src="https://kit.fontawesome.com/a2e8b6f84a.js" crossorigin="anonymous"></script>
+  <title>REDoT :: Operator Console</title>
+
+  <!-- Fira Code for “terminal” vibe -->
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+  <!-- Font-Awesome icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-  <div id="container">
-    <header>
-      <h1>REDoT :: Red Team Operator Terminal</h1>
-      <div class="agent-select">
-        <label for="agent">Agent:</label>
-        <select id="agent">
-          <option value="local">Localhost</option>
-          <!-- Populated from backend if multi-agent -->
-        </select>
-      </div>
-    </header>
+  <header>
+    <h1>REDoT<span class="blink">▌</span></h1>
+    <div id="agentBox">
+      <label for="agentSelect">Agent&nbsp;</label>
+      <select id="agentSelect">
+        <option value="local">localhost</option>
+      </select>
+    </div>
+  </header>
 
-    <section id="module-controls">
-      <div class="module-row">
-        <label for="moduleSelect">Select Module:</label>
+  <main>
+    <!-- MODULE LAUNCH AREA -->
+    <section id="launcher">
+      <div class="row">
+        <label for="moduleSelect">Module</label>
         <select id="moduleSelect"></select>
-        <button id="refreshBtn" title="Refresh Modules"><i class="fas fa-sync-alt"></i></button>
-        <button id="loadConfigBtn" title="Load Module Config"><i class="fas fa-cog"></i></button>
+        <button id="refreshMods"      title="Refresh"><i class="fas fa-sync-alt"></i></button>
+        <button id="loadConfBtn"      title="Load saved config"><i class="fas fa-folder-open"></i></button>
       </div>
 
-      <div id="inputForm">
-        <!-- Dynamic inputs per module will be injected here -->
-      </div>
+      <!-- INPUTS dynamically injected here -->
+      <form id="paramForm"></form>
 
-      <div class="action-buttons">
-        <button id="runBtn"><i class="fas fa-play"></i> Run Module</button>
-        <button id="clearBtn"><i class="fas fa-trash-alt"></i> Clear Output</button>
-        <button id="downloadBtn"><i class="fas fa-download"></i> Download Output</button>
-      </div>
-    </section>
-
-    <section id="output-section">
-      <h2>Terminal Output</h2>
-      <div id="outputBox" class="terminal"></div>
-    </section>
-
-    <section id="copilot-panel">
-      <h2>Copilot Suggestions</h2>
-      <div id="copilotOutput">
-        <!-- AI Copilot hints (chaining, tactics) -->
+      <!-- ACTIONS -->
+      <div class="actions">
+        <button id="runBtn"    class="primary"><i class="fas fa-play"></i> Run </button>
+        <button id="clearBtn"><i class="fas fa-trash"></i> Clear</button>
+        <button id="dlBtn"><i class="fas fa-download"></i> Download Log</button>
       </div>
     </section>
-  </div>
 
-  <script src="/static/main.js"></script>
+    <!-- LIVE TERMINAL OUTPUT -->
+    <section id="terminal">
+      <h2>Output</h2>
+      <pre id="termBox" class="term"></pre>
+    </section>
+
+    <!-- COPILOT / HINTS -->
+    <aside id="copilot">
+      <h3>Copilot&nbsp;AI</h3>
+      <div id="copilotFeed"></div>
+    </aside>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>
