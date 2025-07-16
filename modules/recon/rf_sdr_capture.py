@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-##!/usr/bin/env python3
-# Enhanced REDoT SDR RF Capture Module
-
+#
 import os
 import time
 import json
