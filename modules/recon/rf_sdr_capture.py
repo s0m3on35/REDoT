@@ -1,70 +1,64 @@
 #!/usr/bin/env python3
-#
+##!/usr/bin/env python3
+# Enhanced REDoT SDR RF Capture Module
 
 import os
-import sys
 import time
 import json
-import uuid
-import argparse
 import subprocess
+import base64
+import hashlib
 from datetime import datetime
-from pathlib import Path
+from urllib.request import urlopen
 
 AGENT_ID = "rf_sdr_capture"
-CAPTURE_DIR = Path("rf_captures")
-ALERT_FILE = Path("webgui/alerts.json")
-KILLCHAIN_FILE = Path("reports/killchain.json")
-STIX_EXPORT = Path("results/stix_rf_capture_bundle.json")
+ALERT_FILE = "webgui/alerts.json"
+KILLCHAIN_FILE = "reports/killchain.json"
+CAPTURE_DIR = "rf_captures"
+BLE_DB_FILE = "results/ble_scan_results.json"
+WATERFALL_PLOTTER = "modules/recon/rf_waterfall_plotter.py"
+FREQ = "433920000"
+DURATION = 10
+timestamp = int(time.time())
+SUB_FILE = f"{CAPTURE_DIR}/capture_{timestamp}.sub"
+WAV_FILE = f"{CAPTURE_DIR}/capture_{timestamp}.wav"
+PCAP_FILE = f"{CAPTURE_DIR}/capture_{timestamp}.pcap"
+FP_FILE = f"{CAPTURE_DIR}/fingerprint_{timestamp}.json"
+
 ENTROPY_ANALYZER = "modules/analysis/entropy_analyzer.py"
 SIGNAL_CLONER = "modules/wireless/rf_signal_cloner.py"
-SPECTROGRAM_OUTPUT = CAPTURE_DIR / "spectrogram.png"
+COMPRESSOR = "modules/utils/rf_compressor.py"
+BLE_CORRELATOR = "modules/utils/ble_rf_matcher.py"
 
-# ========== CLI ARGUMENTS ==========
-parser = argparse.ArgumentParser(description="RF SDR Signal Capture + Analysis")
-parser.add_argument("--freq", type=str, default="433920000", help="Center frequency in Hz (default: 433920000)")
-parser.add_argument("--duration", type=int, default=10, help="Duration in seconds (default: 10)")
-parser.add_argument("--device", choices=["rtl", "hackrf"], default="rtl", help="Force device selection")
-parser.add_argument("--websocket", action="store_true", help="Enable WebSocket alerting")
-args = parser.parse_args()
-
-timestamp = int(time.time())
-uid = uuid.uuid4().hex[:8]
-SUB_FILE = CAPTURE_DIR / f"capture_{timestamp}_{uid}.sub"
-WAV_FILE = CAPTURE_DIR / f"capture_{timestamp}_{uid}.wav"
-PCAP_FILE = CAPTURE_DIR / f"capture_{timestamp}_{uid}.pcap"
-
-# ========== UTILS ==========
 def log(msg):
-    print(f"[RF] {msg}")
+    print(f"[SDR] {msg}")
 
 def push_alert():
-    CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
+    os.makedirs("webgui", exist_ok=True)
     alert = {
         "agent": AGENT_ID,
-        "alert": "RF signal capture in progress",
+        "alert": "SDR RF capture in progress",
         "type": "recon",
-        "timestamp": time.time(),
-        "uid": uid
+        "timestamp": time.time()
     }
     with open(ALERT_FILE, "a") as f:
         f.write(json.dumps(alert) + "\n")
 
-def log_killchain(freq):
+def log_killchain():
+    os.makedirs("reports", exist_ok=True)
     entry = {
         "agent": AGENT_ID,
-        "technique": "RF Signal Capture → Entropy → Replay Prep",
-        "frequency": freq,
+        "technique": "RF Signal Capture â Entropy Analysis â BLE Correlation â Compression â Replay Prep",
+        "frequency": FREQ,
         "artifacts": {
-            "sub": str(SUB_FILE),
-            "wav": str(WAV_FILE),
-            "pcap": str(PCAP_FILE),
-            "spectrogram": str(SPECTROGRAM_OUTPUT)
+            "sub": SUB_FILE,
+            "wav": WAV_FILE,
+            "pcap": PCAP_FILE,
+            "fingerprint": FP_FILE
         },
-        "uid": uid,
         "timestamp": datetime.utcnow().isoformat() + "Z"
     }
-    if KILLCHAIN_FILE.exists():
+    if os.path.exists(KILLCHAIN_FILE):
         with open(KILLCHAIN_FILE, "r") as f:
             data = json.load(f)
     else:
@@ -73,93 +67,77 @@ def log_killchain(freq):
     with open(KILLCHAIN_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-def capture_signal():
-    CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
-    if args.device == "hackrf":
-        log("Using HackRF...")
-        cmd = ["hackrf_transfer", "-r", str(SUB_FILE), "-f", args.freq, "-s", "2000000", "-n", str(2000000 * args.duration)]
-    else:
-        log("Using RTL-SDR...")
-        cmd = ["rtl_sdr", str(SUB_FILE), "-f", args.freq, "-s", "2048000", "-n", str(2048000 * args.duration)]
-
-    log("Capturing raw signal...")
-    subprocess.run(cmd, check=True)
-    log(f"Saved: {SUB_FILE}")
+def capture_raw_signal():
+    os.makedirs(CAPTURE_DIR, exist_ok=True)
+    log("Capturing raw IQ samples...")
+    subprocess.call([
+        "rtl_sdr", SUB_FILE, "-f", FREQ, "-s", "2048000", "-n", str(2048000 * DURATION)
+    ])
+    log(f"Saved raw RF to {SUB_FILE}")
 
 def convert_to_wav():
     log("Converting to WAV...")
-    subprocess.run([
+    subprocess.call([
         "sox", "-r", "2048000", "-e", "unsigned-integer", "-b", "8", "-c", "1",
-        str(SUB_FILE), str(WAV_FILE)
-    ], check=True)
-    log(f"Saved WAV: {WAV_FILE}")
+        SUB_FILE, WAV_FILE
+    ])
+    log(f"WAV file saved: {WAV_FILE}")
 
-def generate_spectrogram():
-    log("Generating spectrogram...")
-    subprocess.run([
-        "sox", str(WAV_FILE), "-n", "spectrogram", "-o", str(SPECTROGRAM_OUTPUT)
-    ], check=True)
-    log(f"Saved spectrogram: {SPECTROGRAM_OUTPUT}")
+def decode_with_rtl_433():
+    log("Decoding with rtl_433...")
+    with open(PCAP_FILE, "w") as f:
+        subprocess.call([
+            "rtl_433", "-r", SUB_FILE, "-F", "pcap"
+        ], stdout=f)
+    log(f"PCAP saved: {PCAP_FILE}")
 
-def decode_to_pcap():
-    log("Decoding to PCAP with rtl_433...")
-    with open(PCAP_FILE, "wb") as out:
-        subprocess.run(["rtl_433", "-r", str(SUB_FILE), "-F", "pcap"], stdout=out)
-    log(f"Saved PCAP: {PCAP_FILE}")
+def fingerprint_signal():
+    log("Generating RF fingerprint...")
+    with open(SUB_FILE, "rb") as f:
+        raw = f.read()
+        fingerprint = {
+            "hash_sha256": hashlib.sha256(raw).hexdigest(),
+            "size": len(raw),
+            "time": datetime.utcnow().isoformat() + "Z"
+        }
+        with open(FP_FILE, "w") as fp:
+            json.dump(fingerprint, fp, indent=2)
+        log(f"Fingerprint stored in {FP_FILE}")
 
-def run_entropy_analysis():
-    log("→ Running Entropy Analyzer...")
-    subprocess.run(["python3", ENTROPY_ANALYZER, "--input", str(SUB_FILE)])
+def correlate_with_ble():
+    log("Correlating RF capture with BLE telemetry...")
+    subprocess.call(["python3", BLE_CORRELATOR, "--rf", SUB_FILE, "--ble", BLE_DB_FILE])
 
-def run_signal_cloner():
-    log("→ Running RF Signal Cloner...")
-    subprocess.run(["python3", SIGNAL_CLONER, "--input", str(SUB_FILE)])
+def compress_rf():
+    log("Compressing RF signal for storage/transmission...")
+    subprocess.call(["python3", COMPRESSOR, "--input", SUB_FILE])
 
-def generate_stix_export():
-    from datetime import datetime
-    bundle = {
-        "type": "bundle",
-        "id": f"bundle--{uuid.uuid4()}",
-        "objects": [
-            {
-                "type": "observed-data",
-                "id": f"observed-data--{uuid.uuid4()}",
-                "first_observed": datetime.utcnow().isoformat() + "Z",
-                "last_observed": datetime.utcnow().isoformat() + "Z",
-                "number_observed": 1,
-                "objects": {
-                    "0": {
-                        "type": "file",
-                        "name": f"RF Capture {uid}",
-                        "hashes": {},
-                        "extensions": {
-                            "artifact": {
-                                "url": str(SUB_FILE),
-                                "mime_type": "application/octet-stream"
-                            }
-                        }
-                    }
-                }
-            }
-        ]
-    }
-    STIX_EXPORT.parent.mkdir(parents=True, exist_ok=True)
-    with open(STIX_EXPORT, "w") as f:
-        json.dump(bundle, f, indent=2)
-    log(f"STIX export saved: {STIX_EXPORT}")
+def chain_entropy_analyzer():
+    log("â Launching Entropy Analyzer...")
+    subprocess.call(["python3", ENTROPY_ANALYZER, "--input", SUB_FILE])
 
-# ========== MAIN ==========
+def chain_signal_cloner():
+    log("â Launching RF Signal Cloner...")
+    subprocess.call(["python3", SIGNAL_CLONER, "--input", SUB_FILE])
+
+def plot_waterfall():
+    log("Generating waterfall plot...")
+    subprocess.call(["python3", WATERFALL_PLOTTER, "--input", SUB_FILE])
+
 def main():
     push_alert()
-    capture_signal()
+    log("SDR capture started")
+    capture_raw_signal()
     convert_to_wav()
-    generate_spectrogram()
-    decode_to_pcap()
-    run_entropy_analysis()
-    run_signal_cloner()
-    log_killchain(args.freq)
-    generate_stix_export()
-    log("✓ Full RF capture + analysis complete.")
+    decode_with_rtl_433()
+    fingerprint_signal()
+    correlate_with_ble()
+    compress_rf()
+    chain_entropy_analyzer()
+    chain_signal_cloner()
+    plot_waterfall()
+    log_killchain()
+    log("Capture + chain complete.")
 
 if __name__ == "__main__":
     main()
