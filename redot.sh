@@ -1,5 +1,5 @@
 #!/bin/bash
-# REDOT Toolkit Launcher with Auto-Detection and READY2GO 
+# REDOT Toolkit Launcher with Auto-Detection, Virtual Env, and READY2GO
 
 REDOT_PATH="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$REDOT_PATH/logs"
@@ -58,7 +58,6 @@ flask
 websocket-server
 pyyaml
 aioblescan
-blesuite
 numpy
 opencv-python
 pillow
@@ -68,11 +67,45 @@ transformers
 tflite-runtime
 pyttsx3
 PyQt5
+python-nmap
+shodan
+python-whois
 EOF
 fi
 
-$PYTHON -m pip install --upgrade pip >/dev/null 2>&1
-$PYTHON -m pip install -r "$REQ_FILE" >/dev/null 2>&1
+echo "[*] Installing pip packages..."
+$PYTHON -m pip install --upgrade pip >> "$LOG_DIR/install.log" 2>&1
+
+FAILED_PKGS=()
+
+while read -r pkg || [[ -n "$pkg" ]]; do
+    echo "[*] Installing: $pkg"
+    $PYTHON -m pip install "$pkg" >> "$LOG_DIR/install.log" 2>&1
+    if [ $? -ne 0 ]; then
+        echo "[!] Failed to install $pkg"
+        FAILED_PKGS+=("$pkg")
+    fi
+done < "$REQ_FILE"
+
+echo "[*] Installing blesuite from GitHub..."
+$PYTHON -m pip install git+https://github.com/thegilbertlab/blesuite.git >> "$LOG_DIR/install.log" 2>&1
+if [ $? -ne 0 ]; then
+    echo "[!] Failed to install blesuite"
+    FAILED_PKGS+=("blesuite (GitHub)")
+fi
+
+if [ ${#FAILED_PKGS[@]} -ne 0 ]; then
+    echo ""
+    echo "=============================="
+    echo " [!] Some dependencies failed:"
+    for item in "${FAILED_PKGS[@]}"; do
+        echo "    - $item"
+    done
+    echo " [!] Check log: logs/install.log"
+    echo "=============================="
+else
+    echo "[*] All Python dependencies installed successfully."
+fi
 
 # --- Step 4: Auto-update device map and README.md ---
 echo "[*] Updating module-to-device mapping..."
