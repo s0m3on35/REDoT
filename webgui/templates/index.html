@@ -3,59 +3,88 @@
 <head>
   <meta charset="UTF-8" />
   <title>REDoT :: Operator Console</title>
-
-  <!-- Fira Code for “terminal” vibe -->
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
-  <!-- Font-Awesome icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code&display=swap" rel="stylesheet">
+  <script src="https://kit.fontawesome.com/a2e8b6f84a.js" crossorigin="anonymous"></script>
 </head>
 <body>
-  <header>
-    <h1>REDoT<span class="blink">▌</span></h1>
-    <div id="agentBox">
-      <label for="agentSelect">Agent&nbsp;</label>
-      <select id="agentSelect">
-        <option value="local">localhost</option>
-      </select>
-    </div>
-  </header>
+  <div id="ui-container">
 
-  <main>
-    <!-- MODULE LAUNCH AREA -->
-    <section id="launcher">
-      <div class="row">
-        <label for="moduleSelect">Module</label>
-        <select id="moduleSelect"></select>
-        <button id="refreshMods"      title="Refresh"><i class="fas fa-sync-alt"></i></button>
-        <button id="loadConfBtn"      title="Load saved config"><i class="fas fa-folder-open"></i></button>
-      </div>
-
-      <!-- INPUTS dynamically injected here -->
-      <form id="paramForm"></form>
-
-      <!-- ACTIONS -->
-      <div class="actions">
-        <button id="runBtn"    class="primary"><i class="fas fa-play"></i> Run </button>
-        <button id="clearBtn"><i class="fas fa-trash"></i> Clear</button>
-        <button id="dlBtn"><i class="fas fa-download"></i> Download Log</button>
-      </div>
-    </section>
-
-    <!-- LIVE TERMINAL OUTPUT -->
-    <section id="terminal">
-      <h2>Output</h2>
-      <pre id="termBox" class="term"></pre>
-    </section>
-
-    <!-- COPILOT / HINTS -->
-    <aside id="copilot">
-      <h3>Copilot&nbsp;AI</h3>
-      <div id="copilotFeed"></div>
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div class="logo">REDoT<span class="dash">—</span></div>
+      <nav>
+        <button class="nav-btn active"><i class="fas fa-wifi"></i></button>
+        <button class="nav-btn"><i class="fas fa-broadcast-tower"></i></button>
+        <button class="nav-btn"><i class="fas fa-camera"></i></button>
+        <button class="nav-btn"><i class="fas fa-bolt"></i></button>
+        <button class="nav-btn"><i class="fas fa-skull-crossbones"></i></button>
+      </nav>
     </aside>
-  </main>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <!-- Main Console Panel -->
+    <main id="main-panel">
+      <header class="topbar">
+        <div class="module-label">Module</div>
+        <select id="moduleSelect" class="module-dropdown">
+          <option value="wifi_deauth.py">Wi-Fi Deauthentication</option>
+          <!-- Dynamically populated -->
+        </select>
+        <div class="topbar-controls">
+          <button id="refreshBtn" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+          <button id="saveBtn" title="Save Config"><i class="fas fa-save"></i></button>
+        </div>
+        <div class="agent-dropdown">
+          <select id="agentSelect">
+            <option value="localhost">localhost</option>
+            <!-- Dynamically populated -->
+          </select>
+        </div>
+      </header>
+
+      <!-- Dynamic Input Form -->
+      <section id="inputs">
+        <label for="targetInput" class="param-label">Target</label>
+        <input type="text" id="targetInput" placeholder="192.168.1.1" />
+
+        <label for="interfaceInput" class="param-label">--interface</label>
+        <input type="text" id="interfaceInput" placeholder="wlan0" />
+
+        <label for="ssidInput" class="param-label">--ssid</label>
+        <input type="text" id="ssidInput" placeholder="Target SSID (optional)" />
+      </section>
+
+      <!-- Control Buttons -->
+      <section id="controls">
+        <button id="runBtn" class="run">Run</button>
+        <button id="clearBtn">Clear</button>
+        <button id="downloadBtn">Download</button>
+        <button id="historyBtn">Command History</button>
+      </section>
+
+      <!-- Output Terminal -->
+      <section id="output">
+        <div class="output-title">Output</div>
+        <pre id="terminalOutput" class="terminal"></pre>
+      </section>
+    </main>
+
+    <!-- Command History Panel -->
+    <aside id="history-panel">
+      <div class="history-title">Command History</div>
+      <div id="historyLog">
+        <!-- Injected dynamically -->
+        <div class="history-entry">
+          <div class="history-meta">
+            <span class="command-name">Wi-Fi Deauthentication</span><br/>
+            <span class="command-target">192.168.1.1 wlan0</span>
+          </div>
+          <div class="history-time">17:18:23</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>
