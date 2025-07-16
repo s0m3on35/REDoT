@@ -1,5 +1,5 @@
 #!/bin/bash
-# REDOT Toolkit Launcher with Auto-Detection and READY2GO + Virtual Env Support
+# REDOT Toolkit Launcher with Auto-Detection and READY2GO 
 
 REDOT_PATH="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$REDOT_PATH/logs"
