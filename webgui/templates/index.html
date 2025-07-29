@@ -3,26 +3,30 @@
 <head>
   <meta charset="UTF-8" />
   <title>REDoT :: Operator Console</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code&display=swap" rel="stylesheet">
   <script src="https://kit.fontawesome.com/a2e8b6f84a.js" crossorigin="anonymous"></script>
 </head>
 <body>
-  <div id="ui-container">
+  <div id="ui-container" class="grid-layout">
 
     <!-- Sidebar -->
     <aside id="sidebar">
-      <div class="logo">REDoT<span class="dash">—</span></div>
+      <div class="logo">
+        <span class="logo-icon"><i class="fas fa-terminal"></i></span>
+        <span class="logo-text">REDoT</span><span class="dash"> — </span>
+      </div>
       <nav>
-        <button class="nav-btn active"><i class="fas fa-wifi"></i></button>
-        <button class="nav-btn"><i class="fas fa-broadcast-tower"></i></button>
-        <button class="nav-btn"><i class="fas fa-camera"></i></button>
-        <button class="nav-btn"><i class="fas fa-bolt"></i></button>
-        <button class="nav-btn"><i class="fas fa-skull-crossbones"></i></button>
+        <button class="nav-btn active" title="Wireless"><i class="fas fa-wifi"></i></button>
+        <button class="nav-btn" title="RF"><i class="fas fa-broadcast-tower"></i></button>
+        <button class="nav-btn" title="Cameras"><i class="fas fa-camera"></i></button>
+        <button class="nav-btn" title="Exploits"><i class="fas fa-bolt"></i></button>
+        <button class="nav-btn" title="Payloads"><i class="fas fa-skull-crossbones"></i></button>
       </nav>
     </aside>
 
-    <!-- Main Console Panel -->
+    <!-- Main Panel -->
     <main id="main-panel">
       <header class="topbar">
         <div class="module-label">Module</div>
@@ -42,8 +46,8 @@
         </div>
       </header>
 
-      <!-- Dynamic Input Form -->
-      <section id="inputs">
+      <!-- Input Parameters -->
+      <section id="inputs" class="input-section">
         <label for="targetInput" class="param-label">Target</label>
         <input type="text" id="targetInput" placeholder="192.168.1.1" />
 
@@ -54,24 +58,24 @@
         <input type="text" id="ssidInput" placeholder="Target SSID (optional)" />
       </section>
 
-      <!-- Control Buttons -->
-      <section id="controls">
-        <button id="runBtn" class="run">Run</button>
-        <button id="clearBtn">Clear</button>
-        <button id="downloadBtn">Download</button>
-        <button id="historyBtn">Command History</button>
+      <!-- Action Buttons -->
+      <section id="controls" class="button-bar">
+        <button id="runBtn" class="run"><i class="fas fa-play"></i> Run</button>
+        <button id="clearBtn"><i class="fas fa-eraser"></i> Clear</button>
+        <button id="downloadBtn"><i class="fas fa-download"></i> Download</button>
+        <button id="historyBtn"><i class="fas fa-history"></i> History</button>
       </section>
 
-      <!-- Output Terminal -->
-      <section id="output">
-        <div class="output-title">Output</div>
+      <!-- Terminal Output -->
+      <section id="output" class="output-panel">
+        <div class="output-title"><i class="fas fa-terminal"></i> Output</div>
         <pre id="terminalOutput" class="terminal"></pre>
       </section>
     </main>
 
-    <!-- Command History Panel -->
+    <!-- Command History -->
     <aside id="history-panel">
-      <div class="history-title">Command History</div>
+      <div class="history-title"><i class="fas fa-scroll"></i> Command History</div>
       <div id="historyLog">
         <!-- Injected dynamically -->
         <div class="history-entry">
@@ -83,6 +87,21 @@
         </div>
       </div>
     </aside>
+
+    <!-- Copilot Panel -->
+    <aside id="copilot-panel">
+      <div class="copilot-title"><i class="fas fa-robot"></i> Copilot Suggestions</div>
+      <div id="copilotLog">
+        <div class="copilot-entry">Waiting for Copilot...</div>
+      </div>
+    </aside>
+
+    <!-- Telemetry Metrics -->
+    <aside id="telemetry-panel">
+      <div class="telemetry-title"><i class="fas fa-chart-line"></i> Live Metrics</div>
+      <canvas id="telemetryChart"></canvas>
+    </aside>
+
   </div>
 
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
