@@ -1,4 +1,4 @@
-// REDoT Operator Consol
+// REDoT Operator Console - Enhanced Version
 const API = "/api";
 const terminal = document.getElementById("terminalOutput");
 const moduleSelect = document.getElementById("moduleSelect");
@@ -17,24 +17,35 @@ window.onload = () => {
   moduleSelect.addEventListener("change", buildFormInputs);
 };
 
-// Load modules from backend
+// Load modules with categories
 async function loadModules() {
   const res = await fetch(`${API}/modules`);
   const modules = await res.json();
 
   moduleSelect.innerHTML = "";
+  const categories = {};
+
   modules.forEach(mod => {
+    const category = mod.category || "uncategorized";
+    if (!categories[category]) {
+      const optgroup = document.createElement("optgroup");
+      optgroup.label = category;
+      categories[category] = optgroup;
+    }
+
     const opt = document.createElement("option");
     opt.value = mod.path;
     opt.textContent = mod.name;
     opt.dataset.inputs = JSON.stringify(mod.inputs || []);
-    moduleSelect.appendChild(opt);
+    opt.dataset.output = mod.output || "";
+    categories[category].appendChild(opt);
   });
 
+  Object.values(categories).forEach(group => moduleSelect.appendChild(group));
   buildFormInputs();
 }
 
-// Generate input fields from module metadata
+// Generate form inputs with support for text, number, dropdown, checkbox
 function buildFormInputs() {
   const selected = moduleSelect.options[moduleSelect.selectedIndex];
   const inputs = JSON.parse(selected.dataset.inputs || "[]");
@@ -45,25 +56,46 @@ function buildFormInputs() {
     label.className = "param-label";
     label.textContent = `--${input.name}`;
 
-    const field = document.createElement("input");
-    field.type = input.type === "number" ? "number" : "text";
-    field.name = input.name;
-    field.placeholder = input.description || "";
+    let field;
+    switch (input.ui_type) {
+      case "select":
+        field = document.createElement("select");
+        field.name = input.name;
+        input.options.forEach(opt => {
+          const option = document.createElement("option");
+          option.value = opt;
+          option.textContent = opt;
+          field.appendChild(option);
+        });
+        break;
+      case "checkbox":
+        field = document.createElement("input");
+        field.type = "checkbox";
+        field.name = input.name;
+        break;
+      default:
+        field = document.createElement("input");
+        field.type = input.type === "number" ? "number" : "text";
+        field.name = input.name;
+        field.placeholder = input.description || "";
+    }
 
     paramForm.appendChild(label);
     paramForm.appendChild(field);
   });
 }
 
-// Run selected module
+// Run module with chaining output injection
 async function runModule() {
   const selected = moduleSelect.options[moduleSelect.selectedIndex];
   const path = selected.value;
 
   const inputs = {};
-  const fields = paramForm.querySelectorAll("input");
+  const fields = paramForm.querySelectorAll("input, select");
   fields.forEach(input => {
-    if (input.value.trim() !== "") {
+    if (input.type === "checkbox") {
+      inputs[input.name] = input.checked;
+    } else if (input.value.trim() !== "") {
       inputs[input.name] = input.value;
     }
   });
@@ -79,11 +111,11 @@ async function runModule() {
   terminal.textContent = "";
   appendToHistory(selected.textContent, inputs);
 
-  startPollingOutput(currentExecId);
+  startPollingOutput(currentExecId, selected.dataset.output);
 }
 
-// Poll output log until command is complete
-function startPollingOutput(execId) {
+// Poll output and auto-chain to next if applicable
+function startPollingOutput(execId, expectedOutput) {
   clearInterval(pollingInterval);
 
   pollingInterval = setInterval(async () => {
@@ -96,15 +128,29 @@ function startPollingOutput(execId) {
         terminal.scrollTop = terminal.scrollHeight;
       }
 
-      if (data.log && data.log.includes("return code") || data.log.includes("completed") || data.log.includes("exited")) {
+      if (data.log && (data.log.includes("return code") || data.log.includes("completed") || data.log.includes("exited"))) {
         clearInterval(pollingInterval);
+        tryChaining(expectedOutput, data.log);
       }
-
     } catch (err) {
       clearInterval(pollingInterval);
       terminal.textContent += "\n[!] Output polling failed.";
     }
   }, 2000);
+}
+
+// Attempt to chain to next module if chaining tag detected
+function tryChaining(expectedKey, log) {
+  if (!expectedKey) return;
+  const match = log.match(new RegExp(`${expectedKey}: (.+)`));
+  if (match && match[1]) {
+    const value = match[1].trim();
+    const nextField = paramForm.querySelector(`[name="${expectedKey}"]`);
+    if (nextField && nextField.tagName === "INPUT") {
+      nextField.value = value;
+    }
+    terminal.textContent += `\n[>] Auto-filled ${expectedKey} from previous output.`;
+  }
 }
 
 // Add to command history
@@ -125,7 +171,7 @@ function appendToHistory(name, inputs) {
   historyPanel.prepend(entry);
 }
 
-// Download log as TXT
+// Download output as TXT
 function downloadLog() {
   const blob = new Blob([terminal.textContent], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
