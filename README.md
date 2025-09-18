@@ -1,6 +1,6 @@
 # REDoT – Red Team Operations Toolkit
 
-REDoT is a fully operational red teaming framework targeting smart environments, IoT/OT systems, embedded devices, RF protocols, and more. It includes real exploit modules, reconnaissance tools, AI-driven assistants, dashboard interfaces, and post-exploitation payloads.
+REDoT is a fully operational red teaming framework targeting smart environments, IoT/OT systems, embedded devices, RF protocols, and more. It includes exploit modules, reconnaissance tools, AI-driven assistants, dashboard interfaces, and post-exploitation payloads.
 
 ## Overview
 
