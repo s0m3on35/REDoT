@@ -4,7 +4,7 @@ REDoT is a fully operational red teaming framework targeting smart environments,
 
 ## Overview
 
-REDoT is built for military-grade, real-world offensive cybersecurity operations. Modules support advanced protocols (Modbus, CAN, Zigbee, BLE, JTAG, UART), custom payloads, stealth C2, real-time dashboard integration, and automated chaining logic.
+REDoT is built  real-world offensive cybersecurity operations. Modules support advanced protocols (Modbus, CAN, Zigbee, BLE, JTAG, UART), custom payloads, stealth C2, real-time dashboard integration, and automated chaining logic.
 
 ## Directory Structure
 
